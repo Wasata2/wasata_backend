@@ -20,7 +20,7 @@ class AuthController extends Controller
             'full_name' => ['required', 'string', 'max:150'],
             'email'     => ['required', 'email', 'max:150', 'unique:users,email'],
             'phone'     => ['required', 'string', 'max:20', 'unique:users,phone'],
-            'password'  => ['required', 'string', 'min:8', 'confirmed'],
+            'password'  => ['required', 'string', 'min:8'],
             'role'      => ['required', Rule::in(['customer', 'broker'])], // admins are not self-registered
         ], [
             'email.unique' => 'Email or phone number already registered.',
