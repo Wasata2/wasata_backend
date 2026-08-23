@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://wasata-frontend-git-develop-basmalaaburass-projects.vercel.app'],
+    'allowed_origins' => ['https://wasata-git-develop-basmalaaburass-projects.vercel.app'],
 
     'allowed_origins_patterns' => [],
 
