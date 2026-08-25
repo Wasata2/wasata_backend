@@ -15,4 +15,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me',      [AuthController::class, 'me']);
 
     Route::post('/stores', [StoreController::class, 'store']);
+    Route::get('/stores/me', [StoreController::class, 'myStore']);
 });

@@ -42,4 +42,20 @@ class StoreController extends Controller
             'store'   => $store,
         ], 201);
     }
+
+    // GET /api/stores/me — returns ONLY the store belonging to the logged-in user
+    public function myStore(Request $request)
+    {
+        $store = Store::where('user_id', $request->user()->id)->first();
+
+        if (! $store) {
+            return response()->json([
+                'message' => 'You have not created a store yet.',
+            ], 404);
+        }
+
+        return response()->json([
+            'store' => $store,
+        ], 200);
+    }
 }
