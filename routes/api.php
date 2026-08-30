@@ -28,4 +28,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/orders/{order}/reject', [OrderController::class, 'reject']);
 
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+    Route::put('/auth/profile', [AuthController::class, 'updateProfile']);
+    Route::put('/stores/{store}', [StoreController::class, 'update']);
 });

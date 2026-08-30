@@ -91,4 +91,22 @@ class AuthController extends Controller
             'user' => $request->user()->load('role'),
         ], 200);
     }
+
+        // PUT /api/auth/profile  (requires auth:sanctum middleware)
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'full_name' => ['sometimes', 'string', 'max:150'],
+            'phone'     => ['sometimes', 'string', 'max:20', Rule::unique('users', 'phone')->ignore($user->id)],
+        ]);
+
+        $user->update($validated);
+
+        return response()->json([
+            'message' => 'Profile updated successfully.',
+            'user'    => $user->load('role'),
+        ], 200);
+    }
 }
