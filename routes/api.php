@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\StoreController;
+use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\DashboardController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes — anyone can call these, no login required
@@ -16,4 +19,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/stores', [StoreController::class, 'store']);
     Route::get('/stores/me', [StoreController::class, 'myStore']);
+
+    Route::get('/services',  [ServiceController::class, 'index']);
+    Route::post('/services', [ServiceController::class, 'store']);
+
+    Route::get('/orders',                [OrderController::class, 'index']);
+    Route::patch('/orders/{order}/accept', [OrderController::class, 'accept']);
+    Route::patch('/orders/{order}/reject', [OrderController::class, 'reject']);
+
+    Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
 });
