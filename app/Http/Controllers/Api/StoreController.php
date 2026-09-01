@@ -58,29 +58,32 @@ class StoreController extends Controller
             'store' => $store,
         ], 200);
     }
-        // PUT /api/stores/{store}  (requires auth:sanctum middleware)
-    public function update(Request $request, Store $store)
+
+    // PATCH /api/stores/me — edit profile fields after creation (e.g. from MediatorProfile.js)
+    public function update(Request $request)
     {
-        // Make sure the logged-in user actually owns this store
-        if ($store->user_id !== $request->user()->id) {
+        $store = Store::where('user_id', $request->user()->id)->first();
+
+        if (! $store) {
             return response()->json([
-                'message' => 'Unauthorized.',
-            ], 403);
+                'message' => 'You have not created a store yet.',
+            ], 404);
         }
 
+        // 'sometimes' = only validate/update fields that were actually sent
         $validated = $request->validate([
             'name'                     => ['sometimes', 'string', 'max:150'],
-            'bio'                      => ['nullable', 'string', 'max:150'],
-            'image'                    => ['nullable', 'image', 'max:4096'],
+            'bio'                      => ['sometimes', 'nullable', 'string', 'max:150'],
+            'image'                    => ['sometimes', 'nullable', 'image', 'max:4096'],
             'phone'                    => ['sometimes', 'string', 'max:20'],
             'city'                     => ['sometimes', 'string', 'in:غزة,شمال غزة,الوسطى,خانيونس,رفح'],
-            'accepts_whatsapp_orders'  => ['boolean'],
+            'accepts_whatsapp_orders'  => ['sometimes', 'boolean'],
+            'commission_rate'          => ['sometimes', 'numeric', 'min:0', 'max:100'],
         ]);
 
-        // Handle a new image, if one was sent — otherwise keep the old one
         if ($request->hasFile('image')) {
             $validated['image_path'] = $request->file('image')->store('stores', 'public');
-            unset($validated['image']); // avoid trying to save the raw file object
+            unset($validated['image']);
         }
 
         $store->update($validated);

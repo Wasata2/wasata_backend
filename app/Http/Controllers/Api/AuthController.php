@@ -20,14 +20,14 @@ class AuthController extends Controller
             'full_name' => ['required', 'string', 'max:150'],
             'email'     => ['required', 'email', 'max:150', 'unique:users,email'],
             'phone'     => ['required', 'string', 'max:20', 'unique:users,phone'],
-            'password'  => ['required', 'string', 'min:8'],
+            'password'  => ['required', 'string', 'min:8', 'confirmed'],
             'role'      => ['required', Rule::in(['customer', 'broker'])], // admins are not self-registered
         ], [
             'email.unique' => 'Email or phone number already registered.',
             'phone.unique' => 'Email or phone number already registered.',
         ]);
 
-        $role = Role::where('role_name', $validated['role'])->firstOrFail();
+        $role = Role::where('name', $validated['role'])->firstOrFail();
 
         $user = User::create([
             'full_name'      => $validated['full_name'],
@@ -92,7 +92,7 @@ class AuthController extends Controller
         ], 200);
     }
 
-        // PUT /api/auth/profile  (requires auth:sanctum middleware)
+    // PUT /api/auth/profile  (requires auth:sanctum middleware)
     public function updateProfile(Request $request)
     {
         $user = $request->user();
