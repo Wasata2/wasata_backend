@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
@@ -107,6 +109,83 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Profile updated successfully.',
             'user'    => $user->load('role'),
+        ], 200);
+    }
+
+    // POST /api/auth/forgot-password
+    public function forgotPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $user = User::where('email', $validated['email'])->first();
+
+        // Always return the same message whether the email exists or not —
+        // this stops someone from using this endpoint to find out who is registered.
+        $genericResponse = response()->json([
+            'message' => 'If that email is registered, a reset link has been generated.',
+        ], 200);
+
+        if (! $user) {
+            return $genericResponse;
+        }
+
+        $token = Str::random(64);
+
+        // Replace any previous token for this email with a fresh one
+        DB::table('password_reset_tokens')->where('email', $user->email)->delete();
+        DB::table('password_reset_tokens')->insert([
+            'email'      => $user->email,
+            'token'      => Hash::make($token),
+            'created_at' => now(),
+        ]);
+
+        // TEMPORARY (dev only): since MAIL_MAILER=log, no real email is sent.
+        // We return the raw token directly so the frontend can proceed without email.
+        // Before going live, replace this with an actual emailed reset link and
+        // remove 'reset_token' from the response below.
+        return response()->json([
+            'message'     => 'If that email is registered, a reset link has been generated.',
+            'reset_token' => $token, // ⚠️ remove this line once real email sending is set up
+        ], 200);
+    }
+
+    // POST /api/auth/reset-password
+    public function resetPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'email'    => ['required', 'email'],
+            'token'    => ['required', 'string'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $record = DB::table('password_reset_tokens')->where('email', $validated['email'])->first();
+
+        if (! $record || ! Hash::check($validated['token'], $record->token)) {
+            return response()->json([
+                'message' => 'This reset link is invalid.',
+            ], 400);
+        }
+
+        // Token expires after 60 minutes
+        if (now()->diffInMinutes($record->created_at) > 60) {
+            return response()->json([
+                'message' => 'This reset link has expired. Please request a new one.',
+            ], 400);
+        }
+
+        $user = User::where('email', $validated['email'])->firstOrFail();
+        $user->update(['password' => $validated['password']]); // auto-hashed by the model's cast
+
+        // Token is single-use — remove it once it's been used
+        DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
+
+        // Log the user out of all existing sessions/devices for security
+        $user->tokens()->delete();
+
+        return response()->json([
+            'message' => 'Password reset successfully. Please log in with your new password.',
         ], 200);
     }
 }

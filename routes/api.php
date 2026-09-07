@@ -5,11 +5,14 @@ use App\Http\Controllers\Api\StoreController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\ReviewController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes — anyone can call these, no login required
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login',    [AuthController::class, 'login']);
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/auth/reset-password',  [AuthController::class, 'resetPassword']);
 
 // Protected routes — must send a valid Sanctum token, otherwise Laravel
 // returns 401 automatically before even reaching the controller method
@@ -24,10 +27,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/services',  [ServiceController::class, 'index']);
     Route::post('/services', [ServiceController::class, 'store']);
+    Route::patch('/services/{service}', [ServiceController::class, 'update']);
+    Route::patch('/services/{service}/toggle', [ServiceController::class, 'toggle']);
 
     Route::get('/orders',                [OrderController::class, 'index']);
+    Route::get('/orders/stats',          [OrderController::class, 'stats']);
     Route::patch('/orders/{order}/accept', [OrderController::class, 'accept']);
     Route::patch('/orders/{order}/reject', [OrderController::class, 'reject']);
 
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+
+    Route::get('/reviews', [ReviewController::class, 'index']);
 });

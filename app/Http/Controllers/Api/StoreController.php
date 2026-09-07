@@ -78,6 +78,7 @@ class StoreController extends Controller
             'phone'                    => ['sometimes', 'string', 'max:20'],
             'city'                     => ['sometimes', 'string', 'in:غزة,شمال غزة,الوسطى,خانيونس,رفح'],
             'accepts_whatsapp_orders'  => ['sometimes', 'boolean'],
+            'is_accepting_orders'      => ['sometimes', 'boolean'],
             'commission_rate'          => ['sometimes', 'numeric', 'min:0', 'max:100'],
         ]);
 

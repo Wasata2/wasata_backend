@@ -18,11 +18,13 @@ class Store extends Model
         'city',
         'accepts_whatsapp_orders',
         'commission_rate',
+        'is_accepting_orders',
         'status',
     ];
 
     protected $casts = [
         'accepts_whatsapp_orders' => 'boolean',
+        'is_accepting_orders'     => 'boolean',
     ];
 
     // Always include this computed field in JSON output, alongside the raw columns

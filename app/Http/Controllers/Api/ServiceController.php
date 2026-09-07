@@ -6,17 +6,32 @@ use App\Http\Controllers\Controller;
 use App\Models\ServiceListing;
 use App\Models\Store;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ServiceController extends Controller
 {
-    // Helper: get the logged-in broker's own store, or fail clearly
     private function currentStore(Request $request): Store
     {
         $store = Store::where('user_id', $request->user()->id)->first();
-
         abort_if(! $store, 404, 'You have not created a store yet.');
-
         return $store;
+    }
+
+    // Reusable validation rules for both store() and update()
+    private function rules(string $mode): array
+    {
+        $required = $mode === 'store' ? 'required' : 'sometimes';
+
+        return [
+            'title'        => [$required, 'string', 'max:150'],
+            'icon'         => [$required, Rule::in(ServiceListing::ICONS)],
+            'description'  => ['nullable', 'string'],
+            'fee_type'     => [$required, Rule::in(['free', 'fixed', 'percentage', 'variable'])],
+            // fee_amount is only meaningful (and required) when fee_type is fixed or percentage
+            'fee_amount'   => ['required_if:fee_type,fixed,percentage', 'nullable', 'numeric', 'min:0'],
+            'notes'        => ['nullable', 'string'],
+            'is_available' => ['sometimes', 'boolean'],
+        ];
     }
 
     // GET /api/services — list this broker's own services
@@ -29,37 +44,57 @@ class ServiceController extends Controller
         ]);
     }
 
-    // POST /api/services — add a new service to this broker's store
+    // POST /api/services — "+ إضافة خدمة"
     public function store(Request $request)
     {
         $store = $this->currentStore($request);
 
-        $validated = $request->validate([
-            'title'               => ['required', 'string', 'max:150'],
-            'photo'                => ['nullable', 'image', 'max:4096'],
-            'price'                => ['required', 'numeric', 'min:0'],
-            'category'             => ['nullable', 'string', 'max:100'],
-            'estimated_delivery'   => ['nullable', 'string', 'max:100'],
-        ]);
+        $validated = $request->validate($this->rules('store'));
 
-        $photoPath = null;
-        if ($request->hasFile('photo')) {
-            $photoPath = $request->file('photo')->store('services', 'public');
+        // A free/variable service has no fixed fee_amount — force it to null for clarity
+        if (in_array($validated['fee_type'], ['free', 'variable'])) {
+            $validated['fee_amount'] = null;
         }
 
-        $service = ServiceListing::create([
-            'store_id'            => $store->id,
-            'title'               => $validated['title'],
-            'photo_path'          => $photoPath,
-            'price'               => $validated['price'],
-            'category'            => $validated['category'] ?? null,
-            'estimated_delivery'  => $validated['estimated_delivery'] ?? null,
-            'status'              => 'active',
-        ]);
+        $service = ServiceListing::create([...$validated, 'store_id' => $store->id]);
 
         return response()->json([
             'message' => 'Service added successfully.',
             'service' => $service,
         ], 201);
+    }
+
+    // PATCH /api/services/{service} — "تعديل"
+    public function update(Request $request, ServiceListing $service)
+    {
+        $store = $this->currentStore($request);
+        abort_if($service->store_id !== $store->id, 403, 'This service does not belong to your store.');
+
+        $validated = $request->validate($this->rules('update'));
+
+        if (isset($validated['fee_type']) && in_array($validated['fee_type'], ['free', 'variable'])) {
+            $validated['fee_amount'] = null;
+        }
+
+        $service->update($validated);
+
+        return response()->json([
+            'message' => 'Service updated successfully.',
+            'service' => $service,
+        ], 200);
+    }
+
+    // PATCH /api/services/{service}/toggle — the "تفعيل" / "تعطيل" button
+    public function toggle(Request $request, ServiceListing $service)
+    {
+        $store = $this->currentStore($request);
+        abort_if($service->store_id !== $store->id, 403, 'This service does not belong to your store.');
+
+        $service->update(['is_available' => ! $service->is_available]);
+
+        return response()->json([
+            'message' => $service->is_available ? 'Service enabled.' : 'Service disabled.',
+            'service' => $service,
+        ], 200);
     }
 }
