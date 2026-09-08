@@ -29,7 +29,7 @@ class AuthController extends Controller
             'phone.unique' => 'Email or phone number already registered.',
         ]);
 
-        $role = Role::where('name', $validated['role'])->firstOrFail();
+        $role = Role::where('role_name', $validated['role'])->firstOrFail();
 
         $user = User::create([
             'full_name'      => $validated['full_name'],
