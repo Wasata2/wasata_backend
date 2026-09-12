@@ -97,4 +97,26 @@ class ServiceController extends Controller
             'service' => $service,
         ], 200);
     }
+
+    // DELETE /api/services/{service} — the "حذف" button
+    public function destroy(Request $request, ServiceListing $service)
+    {
+        $store = $this->currentStore($request);
+        abort_if($service->store_id !== $store->id, 403, 'This service does not belong to your store.');
+
+        // The service has already been used in real orders — deleting it would
+        // break those orders' history (order_items references it with restrictOnDelete).
+        // Guide the broker to disable it instead of deleting.
+        if ($service->orderItems()->exists()) {
+            return response()->json([
+                'message' => 'This service has existing orders and cannot be deleted. Disable it instead.',
+            ], 422);
+        }
+
+        $service->delete();
+
+        return response()->json([
+            'message' => 'Service deleted successfully.',
+        ], 200);
+    }
 }

@@ -29,11 +29,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/services', [ServiceController::class, 'store']);
     Route::patch('/services/{service}', [ServiceController::class, 'update']);
     Route::patch('/services/{service}/toggle', [ServiceController::class, 'toggle']);
+    Route::delete('/services/{service}', [ServiceController::class, 'destroy']);
 
     Route::get('/orders',                [OrderController::class, 'index']);
+    Route::post('/orders',               [OrderController::class, 'store']);
     Route::get('/orders/stats',          [OrderController::class, 'stats']);
+    Route::get('/my-orders',             [OrderController::class, 'myOrders']);
+    Route::get('/orders/{order}',        [OrderController::class, 'show']);
     Route::patch('/orders/{order}/accept', [OrderController::class, 'accept']);
     Route::patch('/orders/{order}/reject', [OrderController::class, 'reject']);
+    Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']);
 
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
 
