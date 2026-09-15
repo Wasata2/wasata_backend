@@ -3,12 +3,44 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Models\Review;
 use App\Models\Store;
 use Illuminate\Http\Request;
 
 class ReviewController extends Controller
 {
+    // POST /api/reviews — a CUSTOMER reviewing one of her own completed orders
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'order_id' => ['required', 'exists:orders,id'],
+            'rating'   => ['required', 'integer', 'min:1', 'max:5'],
+            'comment'  => ['nullable', 'string'],
+        ]);
+
+        $order = Order::findOrFail($validated['order_id']);
+
+        abort_unless($order->customer_id === $request->user()->id, 403, 'This is not your order.');
+        abort_unless($order->status === 'received', 422, 'You can only review a completed order.');
+
+        if (Review::where('order_id', $order->id)->exists()) {
+            return response()->json(['message' => 'You have already reviewed this order.'], 422);
+        }
+
+        $review = Review::create([
+            'order_id'    => $order->id,
+            'store_id'    => $order->store_id,
+            'customer_id' => $request->user()->id,
+            'rating'      => $validated['rating'],
+            'comment'     => $validated['comment'] ?? null,
+        ]);
+
+        return response()->json([
+            'message' => 'Review submitted successfully.',
+            'review'  => $review,
+        ], 201);
+    }
     // GET /api/reviews — everything the "التقييمات والمراجعات" page needs in one call
     public function index(Request $request)
     {

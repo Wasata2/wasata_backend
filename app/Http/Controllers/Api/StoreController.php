@@ -8,6 +8,68 @@ use Illuminate\Http\Request;
 
 class StoreController extends Controller
 {
+    // GET /api/stores — public browse/discovery list, for the CUSTOMER choosing a broker
+    // ?city=غزة   ?search=store+name
+    public function browse(Request $request)
+    {
+        $query = Store::where('status', 'published');
+
+        if ($request->filled('city')) {
+            $query->where('city', $request->city);
+        }
+
+        if ($request->filled('search')) {
+            $query->where('name', 'like', '%'.$request->search.'%');
+        }
+
+        $stores = $query->latest()->get();
+
+        return response()->json([
+            'stores' => $stores->map(fn ($store) => [
+                'id'                      => $store->id,
+                'name'                    => $store->name,
+                'bio'                     => $store->bio,
+                'image_url'               => $store->image_url,
+                'city'                    => $store->city,
+                'is_accepting_orders'     => $store->is_accepting_orders,
+                'accepts_whatsapp_orders' => $store->accepts_whatsapp_orders,
+                'delivery_time_range'     => $store->delivery_time_range,
+                'delivery_fee'            => $store->delivery_fee,
+                'pickup_available'        => (bool) $store->pickup_location,
+                'average_rating'          => round($store->reviews()->avg('rating') ?? 0, 1),
+                'total_reviews'           => $store->reviews()->count(),
+            ]),
+        ]);
+    }
+
+    // GET /api/stores/{store} — single store's public page: profile + its available
+    // services (so the customer knows what she can order) + rating summary
+    public function show(Store $store)
+    {
+        abort_unless($store->status === 'published', 404, 'This store is not available.');
+
+        return response()->json([
+            'store' => [
+                'id'                      => $store->id,
+                'name'                    => $store->name,
+                'bio'                     => $store->bio,
+                'image_url'               => $store->image_url,
+                'phone'                   => $store->phone,
+                'city'                    => $store->city,
+                'is_accepting_orders'     => $store->is_accepting_orders,
+                'accepts_whatsapp_orders' => $store->accepts_whatsapp_orders,
+                'delivery_time_range'     => $store->delivery_time_range,
+                'delivery_fee'            => $store->delivery_fee,
+                'pickup_location'         => $store->pickup_location,
+                'average_rating'          => round($store->reviews()->avg('rating') ?? 0, 1),
+                'total_reviews'           => $store->reviews()->count(),
+            ],
+            // is_available filter: a store might have disabled services it doesn't
+            // want new customers to order right now
+            'services' => $store->serviceListings()->where('is_available', true)->get(),
+        ]);
+    }
+
     // POST /api/stores
     public function store(Request $request)
     {
@@ -80,6 +142,9 @@ class StoreController extends Controller
             'accepts_whatsapp_orders'  => ['sometimes', 'boolean'],
             'is_accepting_orders'      => ['sometimes', 'boolean'],
             'commission_rate'          => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'delivery_time_range'      => ['sometimes', 'nullable', 'string', 'max:50'],
+            'delivery_fee'             => ['sometimes', 'numeric', 'min:0'],
+            'pickup_location'          => ['sometimes', 'nullable', 'string', 'max:150'],
         ]);
 
         if ($request->hasFile('image')) {

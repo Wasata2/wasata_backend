@@ -18,6 +18,9 @@ class Store extends Model
         'city',
         'accepts_whatsapp_orders',
         'commission_rate',
+        'delivery_time_range',
+        'delivery_fee',
+        'pickup_location',
         'is_accepting_orders',
         'status',
     ];
@@ -50,5 +53,10 @@ class Store extends Model
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
     }
 }

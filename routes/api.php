@@ -21,9 +21,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me',      [AuthController::class, 'me']);
     Route::put('/auth/profile', [AuthController::class, 'updateProfile']);
 
+    Route::get('/stores', [StoreController::class, 'browse']);
     Route::post('/stores', [StoreController::class, 'store']);
     Route::get('/stores/me', [StoreController::class, 'myStore']);
     Route::patch('/stores/me', [StoreController::class, 'update']);
+    Route::get('/stores/{store}', [StoreController::class, 'show']);
 
     Route::get('/services',  [ServiceController::class, 'index']);
     Route::post('/services', [ServiceController::class, 'store']);
@@ -43,4 +45,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
 
     Route::get('/reviews', [ReviewController::class, 'index']);
+    Route::post('/reviews', [ReviewController::class, 'store']);
 });

@@ -17,7 +17,7 @@ class DashboardController extends Controller
 
         return response()->json([
             'new_orders'       => $store->orders()->where('status', 'pending')->count(),
-            'in_progress'      => $store->orders()->where('status', 'in_progress')->count(),
+            'in_progress'      => $store->orders()->whereIn('status', ['ordered_from_shein', 'shipped', 'arrived', 'inspected'])->count(),
             'active_services'  => $store->serviceListings()->where('is_available', true)->count(),
         ]);
     }
