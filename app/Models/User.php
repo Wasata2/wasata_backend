@@ -8,13 +8,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
-    // The columns register() is allowed to insert via User::create([...])
+    // The columns register()/updateProfile() are allowed to insert via User::create()/update()
     protected $fillable = [
         'full_name',
         'email',
@@ -22,6 +23,7 @@ class User extends Authenticatable
         'password',
         'role_id',
         'account_status',
+        'profile_picture',
     ];
 
     // Never expose these in any json response, even by accident
@@ -34,6 +36,17 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password'           => 'hashed', // Laravel 10+: auto-hashes on assignment
     ];
+
+    // Always include the ready-to-use image URL in JSON output, alongside the raw path —
+    // same pattern as Store::image_url and OrderItem::product_image_url.
+    protected $appends = ['profile_picture_url'];
+
+    // Turns the stored relative path (e.g. "profile-pictures/xyz.jpg") into a full,
+    // permanent, directly-usable URL.
+    public function getProfilePictureUrlAttribute(): ?string
+    {
+        return $this->profile_picture ? Storage::disk('public')->url($this->profile_picture) : null;
+    }
 
     // Every user belongs to exactly one role
     public function role(): BelongsTo
