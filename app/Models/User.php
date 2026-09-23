@@ -15,7 +15,7 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
-    // The columns register()/updateProfile() are allowed to insert via User::create()/update()
+    // The columns register()/updateProfile() are allowed to insert or update via mass assignment
     protected $fillable = [
         'full_name',
         'email',
@@ -37,12 +37,9 @@ class User extends Authenticatable
         'password'           => 'hashed', // Laravel 10+: auto-hashes on assignment
     ];
 
-    // Always include the ready-to-use image URL in JSON output, alongside the raw path —
-    // same pattern as Store::image_url and OrderItem::product_image_url.
+    // Always include the ready-to-use image URL in JSON output — same pattern as Store::image_url
     protected $appends = ['profile_picture_url'];
 
-    // Turns the stored relative path (e.g. "profile-pictures/xyz.jpg") into a full,
-    // permanent, directly-usable URL.
     public function getProfilePictureUrlAttribute(): ?string
     {
         return $this->profile_picture ? Storage::disk('public')->url($this->profile_picture) : null;
