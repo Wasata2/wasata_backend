@@ -24,6 +24,7 @@ class User extends Authenticatable
         'role_id',
         'account_status',
         'profile_picture',
+        'location',
     ];
 
     // Never expose these in any json response, even by accident

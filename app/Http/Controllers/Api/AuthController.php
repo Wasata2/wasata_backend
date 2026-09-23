@@ -95,7 +95,6 @@ class AuthController extends Controller
     }
 
     // PUT /api/auth/profile  (requires auth:sanctum middleware)
-       // PUT /api/auth/profile  (requires auth:sanctum middleware)
     public function updateProfile(Request $request)
     {
         $user = $request->user();
@@ -104,6 +103,9 @@ class AuthController extends Controller
             'full_name'        => ['sometimes', 'string', 'max:150'],
             'phone'            => ['sometimes', 'string', 'max:20', Rule::unique('users', 'phone')->ignore($user->id)],
             'profile_picture'  => ['sometimes', 'nullable', 'image', 'max:4096'], // 4MB max, same limit as Store::image
+            // Same Gaza-only city list used in StoreController — keep the two in sync
+            // if the list ever changes.
+            'location'         => ['sometimes', 'nullable', 'string', 'in:غزة,شمال غزة,الوسطى,خانيونس,رفح'],
         ]);
 
         // Files arrive separately from validate()'s return value — same pattern as
