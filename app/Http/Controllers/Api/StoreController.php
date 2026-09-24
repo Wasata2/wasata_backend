@@ -96,7 +96,9 @@ class StoreController extends Controller
             'phone'                    => $validated['phone'],
             'city'                     => $validated['city'],
             'accepts_whatsapp_orders'  => $validated['accepts_whatsapp_orders'] ?? false,
-            'status'                   => 'draft', // starts as draft — step 2 ("ready to publish") flips this later
+            // Published immediately — name/phone/city are already required above,
+            // and those are the only fields that gate visibility in GET /stores.
+            'status'                   => 'published',
         ]);
 
         return response()->json([
