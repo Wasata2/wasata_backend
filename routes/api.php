@@ -26,6 +26,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/stores/me', [StoreController::class, 'myStore']);
     Route::patch('/stores/me', [StoreController::class, 'update']);
     Route::get('/stores/{store}', [StoreController::class, 'show']);
+    Route::get('/stores/{store}', [StoreController::class, 'show']);
+    Route::get('/stores/{store}/reviews', [ReviewController::class, 'forStore']);
 
     Route::get('/services',  [ServiceController::class, 'index']);
     Route::post('/services', [ServiceController::class, 'store']);
