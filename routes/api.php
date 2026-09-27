@@ -19,13 +19,15 @@ Route::post('/auth/reset-password',  [AuthController::class, 'resetPassword']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me',      [AuthController::class, 'me']);
-    Route::put('/auth/profile', [AuthController::class, 'updateProfile']);
+    Route::match(['put', 'post'], '/auth/profile', [AuthController::class, 'updateProfile']);
 
     Route::get('/stores', [StoreController::class, 'browse']);
     Route::post('/stores', [StoreController::class, 'store']);
     Route::get('/stores/me', [StoreController::class, 'myStore']);
     Route::patch('/stores/me', [StoreController::class, 'update']);
     Route::get('/stores/{store}', [StoreController::class, 'show']);
+    Route::get('/stores/{store}', [StoreController::class, 'show']);
+    Route::get('/stores/{store}/reviews', [ReviewController::class, 'forStore']);
 
     Route::get('/services',  [ServiceController::class, 'index']);
     Route::post('/services', [ServiceController::class, 'store']);
