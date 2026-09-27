@@ -30,10 +30,12 @@ class OrderController extends Controller
         $validated = $request->validate([
             'store_id'                    => ['required', 'exists:stores,id'],
             'delivery_method'             => ['required', Rule::in(['home_delivery', 'pickup'])],
+            'address'                     => ['required_if:delivery_method,home_delivery', 'nullable', 'string', 'max:255'],
+            'contact_phone'               => ['nullable', 'string', 'max:20'],
             'customer_note'               => ['nullable', 'string'],
             'estimated_amount'            => ['nullable', 'numeric', 'min:0'],
             'items'                       => ['required', 'array', 'min:1'],
-            'items.*.service_listing_id'  => ['required', 'exists:service_listings,id'],
+            'items.*.service_listing_id'  => ['nullable', 'exists:service_listings,id'],
             'items.*.quantity'            => ['required', 'integer', 'min:1'],
             // Product details the customer fills in for the SHEIN item behind this line —
             // optional since not every service (e.g. a pure shipping fee) has one.
@@ -53,18 +55,24 @@ class OrderController extends Controller
             'This broker has not set a pickup location, so pickup is not available.'
         );
 
-        $services = ServiceListing::whereIn('id', collect($validated['items'])->pluck('service_listing_id'))
+                // Only look up services for items that actually picked one — a null
+        // service_listing_id is valid now and simply skips this check.
+        $serviceIds = collect($validated['items'])->pluck('service_listing_id')->filter();
+
+        $services = ServiceListing::whereIn('id', $serviceIds)
             ->where('store_id', $store->id)
             ->where('is_available', true)
             ->get()
             ->keyBy('id');
 
         foreach ($validated['items'] as $item) {
-            abort_if(
-                ! $services->has($item['service_listing_id']),
-                422,
-                'One of the selected services is not available from this store.'
-            );
+            if (! empty($item['service_listing_id'])) {
+                abort_if(
+                    ! $services->has($item['service_listing_id']),
+                    422,
+                    'One of the selected services is not available from this store.'
+                );
+            }
         }
 
         $order = DB::transaction(function () use ($validated, $store, $request, $services) {
@@ -75,13 +83,17 @@ class OrderController extends Controller
                 'estimated_amount' => $validated['estimated_amount'] ?? 0,
                 'customer_note'    => $validated['customer_note'] ?? null,
                 'delivery_method'  => $validated['delivery_method'],
+                'address'          => $validated['address'] ?? null,
+                'contact_phone'    => $validated['contact_phone'] ?? null,
                 // Snapshot now — pickup has no fee; home delivery locks in the store's
                 // current fee so a later change by the broker won't alter this order.
                 'delivery_fee'     => $validated['delivery_method'] === 'home_delivery' ? $store->delivery_fee : null,
             ]);
 
-            foreach ($validated['items'] as $index => $item) {
-                $service = $services[$item['service_listing_id']];
+        foreach ($validated['items'] as $index => $item) {
+            $service = ! empty($item['service_listing_id'])
+                    ? $services[$item['service_listing_id']]
+                    : null;
 
                 // Files inside an array field arrive as items.{index}.product_image,
                 // not inside $validated (validate() only returns non-file input).
@@ -92,17 +104,11 @@ class OrderController extends Controller
 
                 OrderItem::create([
                     'order_id'            => $order->id,
-                    'service_listing_id'  => $service->id,
+                    'service_listing_id'  => $service?->id,
                     'quantity'            => $item['quantity'],
-                    'unit_price'          => in_array($service->fee_type, ['fixed', 'percentage'])
+                    'unit_price'          => $service && in_array($service->fee_type, ['fixed', 'percentage'])
                         ? $service->fee_amount
                         : null,
-                    'product_name'        => $item['product_name'],
-                    'product_url'         => $item['product_url'] ?? null,
-                    'product_image_path'  => $imagePath,
-                    'color'               => $item['color'] ?? null,
-                    'size'                => $item['size'] ?? null,
-                    'item_note'           => $item['item_note'] ?? null,
                 ]);
             }
 
@@ -123,9 +129,10 @@ class OrderController extends Controller
         $isCustomer = $order->customer_id === $user->id;
 
         abort_unless($isBroker || $isCustomer, 403, 'You do not have access to this order.');
-
+        $order->load(['customer', 'store', 'items.serviceListing']);
         return response()->json([
             'order' => $order->load(['customer', 'store', 'items.serviceListing']),
+            'date' => $this->formatArabicDate($order),
         ]);
     }
 

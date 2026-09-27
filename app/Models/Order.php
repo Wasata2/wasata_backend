@@ -9,8 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
-    protected $fillable = ['store_id', 'customer_id', 'status', 'estimated_amount', 'customer_note', 'delivery_method', 'delivery_fee'];
-
+    protected $fillable = ['store_id', 'customer_id', 'status', 'estimated_amount', 'customer_note', 'delivery_method', 'delivery_fee', 'address', 'contact_phone'];
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
@@ -30,4 +29,5 @@ class Order extends Model
     {
         return $this->hasOne(Review::class);
     }
+
 }
