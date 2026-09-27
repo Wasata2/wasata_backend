@@ -19,15 +19,13 @@ Route::post('/auth/reset-password',  [AuthController::class, 'resetPassword']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me',      [AuthController::class, 'me']);
-    Route::match(['put', 'post'], '/auth/profile', [AuthController::class, 'updateProfile']);
+    Route::put('/auth/profile', [AuthController::class, 'updateProfile']);
 
     Route::get('/stores', [StoreController::class, 'browse']);
     Route::post('/stores', [StoreController::class, 'store']);
     Route::get('/stores/me', [StoreController::class, 'myStore']);
     Route::patch('/stores/me', [StoreController::class, 'update']);
     Route::get('/stores/{store}', [StoreController::class, 'show']);
-    Route::get('/stores/{store}', [StoreController::class, 'show']);
-    Route::get('/stores/{store}/reviews', [ReviewController::class, 'forStore']);
 
     Route::get('/services',  [ServiceController::class, 'index']);
     Route::post('/services', [ServiceController::class, 'store']);
@@ -42,6 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders/{order}',        [OrderController::class, 'show']);
     Route::patch('/orders/{order}/accept', [OrderController::class, 'accept']);
     Route::patch('/orders/{order}/reject', [OrderController::class, 'reject']);
+    Route::patch('/orders/{order}/cancel', [OrderController::class, 'cancel']);
     Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']);
 
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);

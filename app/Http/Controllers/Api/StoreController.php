@@ -33,12 +33,12 @@ class StoreController extends Controller
                 'city'                    => $store->city,
                 'is_accepting_orders'     => $store->is_accepting_orders,
                 'accepts_whatsapp_orders' => $store->accepts_whatsapp_orders,
-                'commission_rate'         => $store->commission_rate,
                 'delivery_time_range'     => $store->delivery_time_range,
                 'delivery_fee'            => $store->delivery_fee,
                 'pickup_available'        => (bool) $store->pickup_location,
                 'average_rating'          => round($store->reviews()->avg('rating') ?? 0, 1),
                 'total_reviews'           => $store->reviews()->count(),
+                'completed_orders_count'  => $store->orders()->where('status', 'received')->count(),
             ]),
         ]);
     }
@@ -59,12 +59,12 @@ class StoreController extends Controller
                 'city'                    => $store->city,
                 'is_accepting_orders'     => $store->is_accepting_orders,
                 'accepts_whatsapp_orders' => $store->accepts_whatsapp_orders,
-                'commission_rate'         => $store->commission_rate,
                 'delivery_time_range'     => $store->delivery_time_range,
                 'delivery_fee'            => $store->delivery_fee,
                 'pickup_location'         => $store->pickup_location,
                 'average_rating'          => round($store->reviews()->avg('rating') ?? 0, 1),
                 'total_reviews'           => $store->reviews()->count(),
+                'completed_orders_count'  => $store->orders()->where('status', 'received')->count(),
             ],
             // is_available filter: a store might have disabled services it doesn't
             // want new customers to order right now

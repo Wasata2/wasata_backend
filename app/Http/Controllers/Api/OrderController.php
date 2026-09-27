@@ -200,9 +200,28 @@ class OrderController extends Controller
         abort_if($order->store_id !== $store->id, 403, 'This order does not belong to your store.');
         abort_unless($order->status === 'pending', 422, 'Only a pending order can be accepted.');
 
-        $order->update(['status' => 'ordered_from_shein']);
+        // The broker sets the real, confirmed price PER ITEM at the moment she
+        // accepts — every item belonging to this order must get a price.
+        $validated = $request->validate([
+            'items'              => ['required', 'array', 'min:1'],
+            'items.*.id'         => ['required', 'integer', Rule::exists('order_items', 'id')->where('order_id', $order->id)],
+            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+        ]);
 
-        return response()->json(['message' => 'Order accepted.', 'order' => $order]);
+        DB::transaction(function () use ($validated, $order) {
+            foreach ($validated['items'] as $item) {
+                OrderItem::where('id', $item['id'])
+                    ->where('order_id', $order->id)
+                    ->update(['unit_price' => $item['unit_price']]);
+            }
+
+            $order->update(['status' => 'ordered_from_shein']);
+        });
+
+        return response()->json([
+            'message' => 'Order accepted.',
+            'order'   => $order->load('items'),
+        ]);
     }
 
     // PATCH /api/orders/{order}/reject
@@ -215,6 +234,18 @@ class OrderController extends Controller
         $order->update(['status' => 'rejected']);
 
         return response()->json(['message' => 'Order rejected.', 'order' => $order]);
+    }
+
+    // PATCH /api/orders/{order}/cancel — the CUSTOMER cancelling her own order,
+    // only while it's still pending (before the broker has bought anything)
+    public function cancel(Request $request, Order $order)
+    {
+        abort_unless($order->customer_id === $request->user()->id, 403, 'This is not your order.');
+        abort_unless($order->status === 'pending', 422, 'This order can no longer be cancelled.');
+
+        $order->update(['status' => 'cancelled']);
+
+        return response()->json(['message' => 'Order cancelled.', 'order' => $order]);
     }
 
     // PATCH /api/orders/{order}/status — broker moves the order forward through the
