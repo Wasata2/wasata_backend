@@ -131,8 +131,9 @@ class OrderController extends Controller
         abort_unless($isBroker || $isCustomer, 403, 'You do not have access to this order.');
         $order->load(['customer', 'store', 'items.serviceListing']);
         return response()->json([
-            'order' => $order->load(['customer', 'store', 'items.serviceListing']),
+            'order' => array_merge($order->toArray(), [
             'date' => $this->formatArabicDate($order),
+            ]),
         ]);
     }
 
