@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\StockItemController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes — anyone can call these, no login required
@@ -48,4 +49,18 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/reviews', [ReviewController::class, 'index']);
     Route::post('/reviews', [ReviewController::class, 'store']);
+
+
+    Route::get('/stock-items',    [StockItemController::class, 'index']);
+    Route::post('/stock-items',   [StockItemController::class, 'store']);
+    Route::patch('/stock-items/{item}', [StockItemController::class, 'update']);
+    Route::patch('/stock-items/{item}/list', [StockItemController::class, 'list']);
+    Route::patch('/stock-items/{item}/cancel-reservation', [StockItemController::class, 'cancelReservation']);
+    Route::patch('/stock-items/{item}/confirm-sale', [StockItemController::class, 'confirmSale']);
+    Route::delete('/stock-items/{item}', [StockItemController::class, 'destroy']);
+
+    // Customer-facing browsing and reservation
+    Route::get('/stores/{store}/stock-items', [StockItemController::class, 'forStore']);
+    Route::patch('/stock-items/{item}/reserve', [StockItemController::class, 'reserve']);
+
 });
