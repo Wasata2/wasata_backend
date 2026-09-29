@@ -191,7 +191,9 @@ class OrderController extends Controller
             ],
             'orders' => $query->latest()->get()->map(fn ($o) => [
                 'id'                => $o->id,
+                'store_id'          => $o->store_id,
                 'store_name'        => $o->store->name,
+                'store_image_url'   => $o->store->image_url,
                 'date'              => $this->formatArabicDate($o),
                 'items_count'       => $o->items->count(),
                 'estimated_amount'  => $o->estimated_amount,
