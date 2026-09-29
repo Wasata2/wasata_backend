@@ -4,16 +4,27 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 class StockItem extends Model
 {
     protected $fillable = [
         'store_id', 'customer_id', 'name', 'category', 'price', 'status',
+        'size', 'color', 'image_path',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
     ];
+
+    // Same pattern as Store::image_url and OrderItem::product_image_url —
+    // always include a ready-to-use URL alongside the raw stored path.
+    protected $appends = ['image_url'];
+
+    public function getImageUrlAttribute(): ?string
+    {
+        return $this->image_path ? Storage::disk('public')->url($this->image_path) : null;
+    }
 
     public function store(): BelongsTo
     {

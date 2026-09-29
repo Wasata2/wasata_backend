@@ -17,7 +17,7 @@ class StockItemController extends Controller
         return $store;
     }
 
-    private function rules(string $mode): array
+        private function rules(string $mode): array
     {
         $required = $mode === 'store' ? 'required' : 'sometimes';
 
@@ -25,6 +25,9 @@ class StockItemController extends Controller
             'name'     => [$required, 'string', 'max:150'],
             'category' => [$required, Rule::in(['clothes', 'shoes'])],
             'price'    => [$required, 'numeric', 'min:0'],
+            'size'     => ['sometimes', 'nullable', 'string', 'max:20'],
+            'color'    => ['sometimes', 'nullable', 'string', 'max:50'],
+            'image'    => ['sometimes', 'nullable', 'image', 'max:4096'], // 4MB max, same limit as everywhere else
         ];
     }
 
@@ -70,6 +73,13 @@ class StockItemController extends Controller
 
         $validated = $request->validate($this->rules('store'));
 
+        // Files arrive separately from validate()'s return value — same pattern
+        // used in StoreController::store() and OrderController::store().
+        if ($request->hasFile('image')) {
+            $validated['image_path'] = $request->file('image')->store('stock-items', 'public');
+        }
+        unset($validated['image']);
+
         $item = StockItem::create([...$validated, 'store_id' => $store->id]);
 
         return response()->json([
@@ -77,7 +87,6 @@ class StockItemController extends Controller
             'item'    => $item,
         ], 201);
     }
-
     // PATCH /api/stock-items/{item} — "تعديل العرض"
     public function update(Request $request, StockItem $item)
     {
@@ -85,6 +94,12 @@ class StockItemController extends Controller
         abort_if($item->store_id !== $store->id, 403, 'This item does not belong to your store.');
 
         $validated = $request->validate($this->rules('update'));
+
+        if ($request->hasFile('image')) {
+            $validated['image_path'] = $request->file('image')->store('stock-items', 'public');
+        }
+        unset($validated['image']);
+
         $item->update($validated);
 
         return response()->json([
