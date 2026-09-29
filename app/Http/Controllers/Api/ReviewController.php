@@ -41,12 +41,47 @@ class ReviewController extends Controller
             'review'  => $review,
         ], 201);
     }
-
-    // GET /api/reviews — everything the "التقييمات والمراجعات" page needs in one call
-    public function index(Request $request)
+    // POST /api/orders/{order}/review — the CUSTOMER reviewing a completed order,
+    // matching the frontend's exact spec: nested under the order, order model
+    // resolved from the route (not the body), and customer_name in the response.
+    public function storeForOrder(Request $request, Order $order)
     {
-        $store = Store::where('user_id', $request->user()->id)->first();
-        abort_if(! $store, 404, 'You have not created a store yet.');
+        $validated = $request->validate([
+            'rating'  => ['required', 'integer', 'min:1', 'max:5'],
+            'comment' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        abort_unless((int) $order->customer_id === (int) $request->user()->id, 403, 'This is not your order.');
+        abort_unless($order->status === 'received', 422, 'You can only review a completed order.');
+        abort_if(Review::where('order_id', $order->id)->exists(), 422, 'You have already reviewed this order.');
+
+        $review = Review::create([
+            'order_id'    => $order->id,
+            'store_id'    => $order->store_id,
+            'customer_id' => $request->user()->id,
+            'rating'      => $validated['rating'],
+            'comment'     => $validated['comment'] ?? null,
+        ]);
+
+        return response()->json([
+            'message' => 'Review submitted successfully.',
+            'review'  => [
+                'id'            => $review->id,
+                'rating'        => $review->rating,
+                'comment'       => $review->comment,
+                'order_id'      => $review->order_id,
+                'customer_name' => $request->user()->full_name,
+                'created_at'    => $review->created_at,
+            ],
+        ], 201);
+    }
+
+    // GET /api/stores/{store}/reviews — public: same shape as index() (average,
+    // distribution, list) but for any published store, for the CUSTOMER's view
+    // of a broker's profile page.
+    public function forStore(Store $store)
+    {
+        abort_unless($store->status === 'published', 404, 'This store is not available.');
 
         $reviews = Review::with('customer')
             ->where('store_id', $store->id)
@@ -55,7 +90,6 @@ class ReviewController extends Controller
 
         $total = $reviews->count();
 
-        // "توزيع التقييمات" — count + percentage per star, 5 down to 1
         $distribution = [];
         for ($star = 5; $star >= 1; $star--) {
             $count = $reviews->where('rating', $star)->count();
@@ -81,11 +115,11 @@ class ReviewController extends Controller
         ]);
     }
 
-    // GET /api/stores/{store}/reviews — public reviews for a specific store,
-    // for a CUSTOMER viewing that broker's profile before ordering
-    public function forStore(Store $store)
+    // GET /api/reviews — everything the "التقييمات والمراجعات" page needs in one call
+    public function index(Request $request)
     {
-        abort_unless($store->status === 'published', 404, 'This store is not available.');
+        $store = Store::where('user_id', $request->user()->id)->first();
+        abort_if(! $store, 404, 'You have not created a store yet.');
 
         $reviews = Review::with('customer')
             ->where('store_id', $store->id)
@@ -94,6 +128,7 @@ class ReviewController extends Controller
 
         $total = $reviews->count();
 
+        // "توزيع التقييمات" — count + percentage per star, 5 down to 1
         $distribution = [];
         for ($star = 5; $star >= 1; $star--) {
             $count = $reviews->where('rating', $star)->count();

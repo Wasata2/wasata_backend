@@ -44,13 +44,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/orders/{order}/reject', [OrderController::class, 'reject']);
     Route::patch('/orders/{order}/cancel', [OrderController::class, 'cancel']);
     Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']);
+    Route::post('/orders/{order}/review', [ReviewController::class, 'storeForOrder']);
 
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
 
     Route::get('/reviews', [ReviewController::class, 'index']);
     Route::post('/reviews', [ReviewController::class, 'store']);
 
-
+    // Broker's own "القطع الراكدة" inventory
     Route::get('/stock-items',    [StockItemController::class, 'index']);
     Route::post('/stock-items',   [StockItemController::class, 'store']);
     Route::patch('/stock-items/{item}', [StockItemController::class, 'update']);
@@ -59,7 +60,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/stock-items/{item}/cancel-reservation', [StockItemController::class, 'cancelReservation']);
     Route::patch('/stock-items/{item}/confirm-sale', [StockItemController::class, 'confirmSale']);
     Route::delete('/stock-items/{item}', [StockItemController::class, 'destroy']);
- 
+
     // Customer-facing browsing and reservation
     Route::get('/stores/{store}/stock-items', [StockItemController::class, 'forStore']);
     Route::patch('/stock-items/{item}/reserve', [StockItemController::class, 'reserve']);
