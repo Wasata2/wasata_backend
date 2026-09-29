@@ -105,6 +105,18 @@ class StockItemController extends Controller
         return response()->json(['message' => 'Item is now listed for sale.', 'item' => $item]);
     }
 
+    // PATCH /api/stock-items/{item}/unlist — "إلغاء العرض": listed -> unlisted
+    public function unlist(Request $request, StockItem $item)
+    {
+        $store = $this->currentStore($request);
+        abort_if($item->store_id !== $store->id, 403, 'This item does not belong to your store.');
+        abort_unless($item->status === 'listed', 422, 'Only a listed item can be unlisted.');
+
+        $item->update(['status' => 'unlisted']);
+
+        return response()->json(['message' => 'Item is no longer listed for sale.', 'item' => $item]);
+    }
+
     // PATCH /api/stock-items/{item}/cancel-reservation — "إلغاء الحجز": reserved -> listed
     public function cancelReservation(Request $request, StockItem $item)
     {

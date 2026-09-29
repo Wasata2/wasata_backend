@@ -55,12 +55,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/stock-items',   [StockItemController::class, 'store']);
     Route::patch('/stock-items/{item}', [StockItemController::class, 'update']);
     Route::patch('/stock-items/{item}/list', [StockItemController::class, 'list']);
+    Route::patch('/stock-items/{item}/unlist', [StockItemController::class, 'unlist']);
     Route::patch('/stock-items/{item}/cancel-reservation', [StockItemController::class, 'cancelReservation']);
     Route::patch('/stock-items/{item}/confirm-sale', [StockItemController::class, 'confirmSale']);
     Route::delete('/stock-items/{item}', [StockItemController::class, 'destroy']);
-
+ 
     // Customer-facing browsing and reservation
     Route::get('/stores/{store}/stock-items', [StockItemController::class, 'forStore']);
     Route::patch('/stock-items/{item}/reserve', [StockItemController::class, 'reserve']);
-
 });
