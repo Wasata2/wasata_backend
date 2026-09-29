@@ -9,7 +9,25 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
-    protected $fillable = ['store_id', 'customer_id', 'status', 'estimated_amount', 'customer_note', 'delivery_method', 'delivery_fee', 'address', 'contact_phone'];
+    protected $fillable = [
+        'store_id', 'customer_id', 'status', 'estimated_amount', 'customer_note',
+        'delivery_method', 'delivery_fee', 'address', 'contact_phone',
+        'ordered_from_shein_at', 'shipped_at', 'arrived_at',
+        'inspected_at', 'received_at', 'rejected_at', 'cancelled_at',
+    ];
+
+    // Without these, the new *_at columns would come back as raw strings
+    // instead of Carbon instances, and toISOString() below would fail.
+    protected $casts = [
+        'ordered_from_shein_at' => 'datetime',
+        'shipped_at'            => 'datetime',
+        'arrived_at'            => 'datetime',
+        'inspected_at'          => 'datetime',
+        'received_at'           => 'datetime',
+        'rejected_at'           => 'datetime',
+        'cancelled_at'          => 'datetime',
+    ];
+
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
@@ -29,5 +47,4 @@ class Order extends Model
     {
         return $this->hasOne(Review::class);
     }
-
 }

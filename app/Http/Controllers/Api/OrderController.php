@@ -131,9 +131,9 @@ class OrderController extends Controller
         abort_unless($isBroker || $isCustomer, 403, 'You do not have access to this order.');
         $order->load(['customer', 'store', 'items.serviceListing']);
         return response()->json([
-            'order' => array_merge($order->toArray(), [
-            'date' => $this->formatArabicDate($order),
-            ]),
+            'order'        => $order->load(['customer', 'store', 'items.serviceListing']),
+            'status_times' => $this->buildStatusTimes($order),
+
         ]);
     }
 
@@ -197,6 +197,7 @@ class OrderController extends Controller
                 'estimated_amount'  => $o->estimated_amount,
                 'status'            => $o->status,
                 'reviewed'          => (bool) $o->review,
+                'status_times'      => $this->buildStatusTimes($o),
             ]),
         ]);
     }
@@ -223,7 +224,7 @@ class OrderController extends Controller
                     ->update(['unit_price' => $item['unit_price']]);
             }
 
-            $order->update(['status' => 'ordered_from_shein']);
+            $order->update(['status' => 'ordered_from_shein', 'ordered_from_shein_at' => now()]);
         });
 
         return response()->json([
@@ -239,7 +240,7 @@ class OrderController extends Controller
         abort_if($order->store_id !== $store->id, 403, 'This order does not belong to your store.');
         abort_unless($order->status === 'pending', 422, 'Only a pending order can be rejected.');
 
-        $order->update(['status' => 'rejected']);
+        $order->update(['status' => 'rejected', 'rejected_at' => now()]);
 
         return response()->json(['message' => 'Order rejected.', 'order' => $order]);
     }
@@ -251,7 +252,7 @@ class OrderController extends Controller
         abort_unless($order->customer_id === $request->user()->id, 403, 'This is not your order.');
         abort_unless($order->status === 'pending', 422, 'This order can no longer be cancelled.');
 
-        $order->update(['status' => 'cancelled']);
+        $order->update(['status' => 'cancelled', 'cancelled_at' => now()]);
 
         return response()->json(['message' => 'Order cancelled.', 'order' => $order]);
     }
@@ -289,7 +290,9 @@ class OrderController extends Controller
             );
         }
 
-        $order->update(['status' => $newStatus]);
+        // Column name matches the status value exactly for every stage this
+        // endpoint can set (shipped, arrived, inspected, received, cancelled).
+        $order->update(['status' => $newStatus, "{$newStatus}_at" => now()]);
 
         return response()->json(['message' => 'Order status updated.', 'order' => $order]);
     }
@@ -298,6 +301,23 @@ class OrderController extends Controller
     {
         // e.g. "10 سبتمبر 2026 · 10:30 ص" — matches the Figma design exactly
         return $order->created_at->locale('ar')->translatedFormat('j F Y \· h:i A');
+    }
+
+    // Builds the per-stage timestamp map the frontend timeline needs.
+    // "pending" always uses the order's creation time; every other stage
+    // only appears once the order has actually reached it.
+    private function buildStatusTimes(Order $order): array
+    {
+        $times = ['pending' => $order->created_at];
+
+        foreach (['ordered_from_shein', 'shipped', 'arrived', 'inspected', 'received', 'rejected', 'cancelled'] as $stage) {
+            $column = "{$stage}_at";
+            if ($order->$column) {
+                $times[$stage] = $order->$column;
+            }
+        }
+
+        return collect($times)->map(fn ($t) => $t->toISOString())->toArray();
     }
 
     private function applyFilters($query, Request $request, bool $customerNameSearch): void
