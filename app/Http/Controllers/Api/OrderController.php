@@ -219,6 +219,13 @@ class OrderController extends Controller
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
         ]);
 
+        // Make sure NO item is left without a price: the submitted ids must be
+        // exactly the order's item ids (the exists rule above only proves each
+        // submitted id belongs to this order, not that all of them were sent).
+        $orderItemIds = $order->items()->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+        $submittedIds = collect($validated['items'])->pluck('id')->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+        abort_unless($orderItemIds === $submittedIds, 422, 'Every item in the order must be given a price.');
+
         DB::transaction(function () use ($validated, $order) {
             foreach ($validated['items'] as $item) {
                 OrderItem::where('id', $item['id'])
@@ -301,8 +308,11 @@ class OrderController extends Controller
 
     private function formatArabicDate($order): string
     {
+        // created_at is stored/read in UTC — convert to Gaza local time before
+        // formatting, or every list built with this helper runs ~3 hours behind
+        // (Asia/Gaza correctly follows DST, unlike a hardcoded +3 offset).
         // e.g. "10 سبتمبر 2026 · 10:30 ص" — matches the Figma design exactly
-        return $order->created_at->locale('ar')->translatedFormat('j F Y \· h:i A');
+        return $order->created_at->copy()->timezone('Asia/Gaza')->locale('ar')->translatedFormat('j F Y \· h:i A');
     }
 
     // Builds the per-stage timestamp map the frontend timeline needs.
