@@ -1,4 +1,4 @@
-<?php
+p<?php
 
 namespace App\Models;
 
@@ -17,8 +17,8 @@ class StockItem extends Model
         'price' => 'decimal:2',
     ];
 
-    // Same pattern as Store::image_url and OrderItem::product_image_url —
-    // always include a ready-to-use URL alongside the raw stored path.
+    // Always include the ready-to-use image URL in JSON output — same pattern as
+    // Store::image_url and OrderItem::product_image_url.
     protected $appends = ['image_url'];
 
     public function getImageUrlAttribute(): ?string

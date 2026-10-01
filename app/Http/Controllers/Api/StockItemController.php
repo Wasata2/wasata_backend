@@ -25,6 +25,9 @@ class StockItemController extends Controller
             'name'     => [$required, 'string', 'max:150'],
             'category' => [$required, Rule::in(['clothes', 'shoes'])],
             'price'    => [$required, 'numeric', 'min:0'],
+            'size'     => ['nullable', 'string', 'max:50'],
+            'color'    => ['nullable', 'string', 'max:50'],
+            'image'    => ['nullable', 'image', 'max:4096'],
         ];
     }
 
