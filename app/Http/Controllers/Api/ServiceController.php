@@ -13,7 +13,9 @@ class ServiceController extends Controller
     private function currentStore(Request $request): Store
     {
         $store = Store::where('user_id', $request->user()->id)->first();
-        abort_if(! $store, 404, 'You have not created a store yet.');
+        if (! $store) {
+            $this->fail('You have not created a store yet.', 'STORE_NOT_FOUND', 404);
+        }
         return $store;
     }
 
@@ -68,12 +70,8 @@ class ServiceController extends Controller
     public function update(Request $request, ServiceListing $service)
     {
         $store = $this->currentStore($request);
-        abort_if($service->store_id !== $store->id, 403, 'This service does not belong to your store.');
-
-        $validated = $request->validate($this->rules('update'));
-
-        if (isset($validated['fee_type']) && in_array($validated['fee_type'], ['free', 'variable'])) {
-            $validated['fee_amount'] = null;
+        if ($service->store_id !== $store->id) {
+            $this->fail('This service does not belong to your store.', 'SERVICE_NOT_YOURS', 403);
         }
 
         $service->update($validated);
@@ -88,8 +86,9 @@ class ServiceController extends Controller
     public function toggle(Request $request, ServiceListing $service)
     {
         $store = $this->currentStore($request);
-        abort_if($service->store_id !== $store->id, 403, 'This service does not belong to your store.');
-
+        if ($service->store_id !== $store->id) {
+            $this->fail('This service does not belong to your store.', 'SERVICE_NOT_YOURS', 403);
+        }
         $service->update(['is_available' => ! $service->is_available]);
 
         return response()->json([
@@ -102,15 +101,15 @@ class ServiceController extends Controller
     public function destroy(Request $request, ServiceListing $service)
     {
         $store = $this->currentStore($request);
-        abort_if($service->store_id !== $store->id, 403, 'This service does not belong to your store.');
+        if ($service->store_id !== $store->id) {
+            $this->fail('This service does not belong to your store.', 'SERVICE_NOT_YOURS', 403);
+        }
 
         // The service has already been used in real orders — deleting it would
         // break those orders' history (order_items references it with restrictOnDelete).
         // Guide the broker to disable it instead of deleting.
         if ($service->orderItems()->exists()) {
-            return response()->json([
-                'message' => 'This service has existing orders and cannot be deleted. Disable it instead.',
-            ], 422);
+            $this->fail('This service has existing orders and cannot be deleted. Disable it instead.', 'SERVICE_HAS_ORDERS');
         }
 
         $service->delete();

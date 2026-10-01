@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\StockItemController;
+use App\Http\Controllers\Api\NotificationController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes — anyone can call these, no login required
@@ -50,6 +51,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/reviews', [ReviewController::class, 'index']);
     Route::post('/reviews', [ReviewController::class, 'store']);
+
+    Route::get('/notifications',               [NotificationController::class, 'index']);
+    Route::get('/notifications/unread-count',  [NotificationController::class, 'unreadCount']);
+    Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
+    Route::patch('/notifications/read-all',    [NotificationController::class, 'markAllRead']);
 
     // Broker's own "القطع الراكدة" inventory
     Route::get('/stock-items',    [StockItemController::class, 'index']);

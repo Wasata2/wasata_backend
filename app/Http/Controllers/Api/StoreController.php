@@ -48,7 +48,9 @@ class StoreController extends Controller
     // services (so the customer knows what she can order) + rating summary
     public function show(Store $store)
     {
-        abort_unless($store->status === 'published', 404, 'This store is not available.');
+        if ($store->status !== 'published') {
+            $this->fail('This store is not available.', 'STORE_NOT_PUBLISHED', 404);
+        }
 
         return response()->json([
             'store' => [
@@ -112,14 +114,12 @@ class StoreController extends Controller
     }
 
     // GET /api/stores/me — returns ONLY the store belonging to the logged-in user
-    public function myStore(Request $request)
+        public function myStore(Request $request)
     {
         $store = Store::where('user_id', $request->user()->id)->first();
 
         if (! $store) {
-            return response()->json([
-                'message' => 'You have not created a store yet.',
-            ], 404);
+            $this->fail('You have not created a store yet.', 'STORE_NOT_FOUND', 404);
         }
 
         return response()->json([
@@ -133,11 +133,8 @@ class StoreController extends Controller
         $store = Store::where('user_id', $request->user()->id)->first();
 
         if (! $store) {
-            return response()->json([
-                'message' => 'You have not created a store yet.',
-            ], 404);
+            $this->fail('You have not created a store yet.', 'STORE_NOT_FOUND', 404);
         }
-
         // 'sometimes' = only validate/update fields that were actually sent
         $validated = $request->validate([
             'name'                     => ['sometimes', 'string', 'max:150'],

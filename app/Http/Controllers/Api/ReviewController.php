@@ -36,6 +36,14 @@ class ReviewController extends Controller
             'comment'     => $validated['comment'] ?? null,
         ]);
 
+        \App\Models\Notification::notify(
+            $order->store->user_id,
+            'review_received',
+            "تقييم جديد ({$validated['rating']} نجوم) على طلب #{$order->id}",
+            $validated['comment'] ?? null,
+            ['order_id' => $order->id, 'review_id' => $review->id]
+        );
+
         return response()->json([
             'message' => 'Review submitted successfully.',
             'review'  => $review,

@@ -13,7 +13,9 @@ class StockItemController extends Controller
     private function currentStore(Request $request): Store
     {
         $store = Store::where('user_id', $request->user()->id)->first();
-        abort_if(! $store, 404, 'You have not created a store yet.');
+        if (! $store) {
+            $this->fail('You have not created a store yet.', 'STORE_NOT_FOUND', 404);
+        }
         return $store;
     }
 
@@ -96,11 +98,12 @@ class StockItemController extends Controller
     }
 
     // PATCH /api/stock-items/{item} — "تعديل العرض"
-    public function update(Request $request, StockItem $item)
+        public function update(Request $request, StockItem $item)
     {
         $store = $this->currentStore($request);
-        abort_if($item->store_id !== $store->id, 403, 'This item does not belong to your store.');
-
+        if ($item->store_id !== $store->id) {
+            $this->fail('This item does not belong to your store.', 'STOCK_ITEM_NOT_YOURS', 403);
+        }
         $validated = $request->validate($this->rules('update'));
 
         if ($request->hasFile('image')) {
@@ -120,9 +123,12 @@ class StockItemController extends Controller
     public function list(Request $request, StockItem $item)
     {
         $store = $this->currentStore($request);
-        abort_if($item->store_id !== $store->id, 403, 'This item does not belong to your store.');
-        abort_unless($item->status === 'unlisted', 422, 'Only an unlisted item can be offered for sale.');
-
+        if ($item->store_id !== $store->id) {
+            $this->fail('This item does not belong to your store.', 'STOCK_ITEM_NOT_YOURS', 403);
+        }
+        if ($item->status !== 'unlisted') {
+            $this->fail('Only an unlisted item can be offered for sale.', 'STOCK_ITEM_NOT_UNLISTED');
+        }
         $item->update(['status' => 'listed']);
 
         return response()->json(['message' => 'Item is now listed for sale.', 'item' => $item]);
@@ -132,9 +138,12 @@ class StockItemController extends Controller
     public function unlist(Request $request, StockItem $item)
     {
         $store = $this->currentStore($request);
-        abort_if($item->store_id !== $store->id, 403, 'This item does not belong to your store.');
-        abort_unless($item->status === 'listed', 422, 'Only a listed item can be unlisted.');
-
+        if ($item->store_id !== $store->id) {
+            $this->fail('This item does not belong to your store.', 'STOCK_ITEM_NOT_YOURS', 403);
+        }
+        if ($item->status !== 'listed') {
+            $this->fail('Only a listed item can be unlisted.', 'STOCK_ITEM_NOT_LISTED');
+        }
         $item->update(['status' => 'unlisted']);
 
         return response()->json(['message' => 'Item is no longer listed for sale.', 'item' => $item]);
@@ -144,10 +153,24 @@ class StockItemController extends Controller
     public function cancelReservation(Request $request, StockItem $item)
     {
         $store = $this->currentStore($request);
-        abort_if($item->store_id !== $store->id, 403, 'This item does not belong to your store.');
-        abort_unless($item->status === 'reserved', 422, 'This item is not currently reserved.');
-
+        if ($item->store_id !== $store->id) {
+            $this->fail('This item does not belong to your store.', 'STOCK_ITEM_NOT_YOURS', 403);
+        }
+        if ($item->status !== 'reserved') {
+            $this->fail('This item is not currently reserved.', 'STOCK_ITEM_NOT_RESERVED');
+        }
+               $buyerId = $item->customer_id;
         $item->update(['status' => 'listed', 'customer_id' => null]);
+
+        if ($buyerId) {
+            \App\Models\Notification::notify(
+                $buyerId,
+                'stock_item_reservation_cancelled',
+                "تم إلغاء حجز: {$item->name}",
+                null,
+                ['item_id' => $item->id]
+            );
+        }
 
         return response()->json(['message' => 'Reservation cancelled.', 'item' => $item]);
     }
@@ -156,10 +179,25 @@ class StockItemController extends Controller
     public function confirmSale(Request $request, StockItem $item)
     {
         $store = $this->currentStore($request);
-        abort_if($item->store_id !== $store->id, 403, 'This item does not belong to your store.');
-        abort_unless($item->status === 'reserved', 422, 'Only a reserved item can be marked as sold.');
+        if ($item->store_id !== $store->id) {
+            $this->fail('This item does not belong to your store.', 'STOCK_ITEM_NOT_YOURS', 403);
+        }
+        if ($item->status !== 'reserved') {
+            $this->fail('Only a reserved item can be marked as sold.', 'STOCK_ITEM_NOT_RESERVED');
+        }
 
+                $buyerId = $item->customer_id;
         $item->update(['status' => 'sold']);
+
+        if ($buyerId) {
+            \App\Models\Notification::notify(
+                $buyerId,
+                'stock_item_sold',
+                "تم تأكيد بيع: {$item->name}",
+                null,
+                ['item_id' => $item->id]
+            );
+        }
 
         return response()->json(['message' => 'Sale confirmed.', 'item' => $item]);
     }
@@ -168,8 +206,9 @@ class StockItemController extends Controller
     public function destroy(Request $request, StockItem $item)
     {
         $store = $this->currentStore($request);
-        abort_if($item->store_id !== $store->id, 403, 'This item does not belong to your store.');
-
+        if ($item->store_id !== $store->id) {
+            $this->fail('This item does not belong to your store.', 'STOCK_ITEM_NOT_YOURS', 403);
+        }
         $item->delete();
 
         return response()->json(['message' => 'Item deleted successfully.']);
@@ -179,8 +218,9 @@ class StockItemController extends Controller
     // Only "listed" items are shown — not unlisted, reserved, or already sold.
     public function forStore(Request $request, Store $store)
     {
-        abort_unless($store->status === 'published', 404, 'This store is not available.');
-
+        if ($store->status !== 'published') {
+            $this->fail('This store is not available.', 'STORE_NOT_PUBLISHED', 404);
+        }
         $query = StockItem::where('store_id', $store->id)->where('status', 'listed');
         $this->applySortAndFilters($query, $request);
 
@@ -190,13 +230,25 @@ class StockItemController extends Controller
     // PATCH /api/stock-items/{item}/reserve — the CUSTOMER requesting to buy it
     public function reserve(Request $request, StockItem $item)
     {
-        abort_unless($item->status === 'listed', 422, 'This item is not available for reservation.');
+        if ($item->status !== 'listed') {
+            $this->fail('This item is not available for reservation.', 'STOCK_ITEM_NOT_LISTED');
+        }
 
         $item->update([
             'status'      => 'reserved',
             'customer_id' => $request->user()->id,
         ]);
 
+            \App\Models\Notification::notify(
+            $item->store->user_id,
+            'stock_item_reserved',
+            "تم حجز قطعة: {$item->name}",
+            null,
+            ['item_id' => $item->id]
+        );
+
         return response()->json(['message' => 'Item reserved successfully.', 'item' => $item]);
+
+
     }
 }

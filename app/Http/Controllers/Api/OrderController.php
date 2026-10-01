@@ -48,12 +48,8 @@ class OrderController extends Controller
         ]);
 
         $store = Store::findOrFail($validated['store_id']);
-        abort_if(! $store->is_accepting_orders, 422, 'This broker is not accepting orders right now.');
-        abort_if(
-            $validated['delivery_method'] === 'pickup' && ! $store->pickup_location,
-            422,
-            'This broker has not set a pickup location, so pickup is not available.'
-        );
+        if (! $store->is_accepting_orders) { $this->fail('This broker is not accepting orders right now.', 'STORE_NOT_ACCEPTING_ORDERS'); }
+        if ($validated['delivery_method'] === 'pickup' && ! $store->pickup_location) { $this->fail('This broker has not set a pickup location, so pickup is not available.', 'PICKUP_NOT_AVAILABLE'); }
 
                 // Only look up services for items that actually picked one — a null
         // service_listing_id is valid now and simply skips this check.
@@ -67,11 +63,7 @@ class OrderController extends Controller
 
         foreach ($validated['items'] as $item) {
             if (! empty($item['service_listing_id'])) {
-                abort_if(
-                    ! $services->has($item['service_listing_id']),
-                    422,
-                    'One of the selected services is not available from this store.'
-                );
+            if (! $services->has($item['service_listing_id'])) { $this->fail('One of the selected services is not available from this store.', 'SERVICE_NOT_AVAILABLE');
             }
         }
 
@@ -115,6 +107,14 @@ class OrderController extends Controller
             return $order;
         });
 
+            \App\Models\Notification::notify(
+            $store->user_id,
+            'order_placed',
+            "طلب جديد #{$order->id}",
+            "طلب جديد من {$request->user()->full_name}",
+            ['order_id' => $order->id]
+        );
+
         return response()->json([
             'message' => 'Order placed successfully.',
             'order'   => $order->load('items'),
@@ -128,7 +128,7 @@ class OrderController extends Controller
         $isBroker   = $order->store->user_id === $user->id;
         $isCustomer = $order->customer_id === $user->id;
 
-        abort_unless($isBroker || $isCustomer, 403, 'You do not have access to this order.');
+        if (! $isBroker && ! $isCustomer) { $this->fail('You do not have access to this order.', 'ORDER_ACCESS_DENIED', 403); }
         $order->load(['customer', 'store', 'items.serviceListing']);
         return response()->json([
             'order'        => $order->load(['customer', 'store', 'items.serviceListing']),
@@ -230,8 +230,8 @@ class OrderController extends Controller
     public function accept(Request $request, Order $order)
     {
         $store = $this->currentStore($request);
-        abort_if($order->store_id !== $store->id, 403, 'This order does not belong to your store.');
-        abort_unless($order->status === 'pending', 422, 'Only a pending order can be accepted.');
+        if ($order->store_id !== $store->id) { $this->fail('This order does not belong to your store.', 'ORDER_NOT_YOURS', 403); }
+        if ($order->status !== 'pending') { $this->fail('Only a pending order can be accepted.', 'ORDER_NOT_PENDING'); }
 
         // The broker sets the real, confirmed price PER ITEM at the moment she
         // accepts — every item belonging to this order must get a price.
@@ -246,7 +246,7 @@ class OrderController extends Controller
         // submitted id belongs to this order, not that all of them were sent).
         $orderItemIds = $order->items()->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
         $submittedIds = collect($validated['items'])->pluck('id')->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
-        abort_unless($orderItemIds === $submittedIds, 422, 'Every item in the order must be given a price.');
+        if ($orderItemIds !== $submittedIds) { $this->fail('Every item in the order must be given a price.', 'MISSING_ITEM_PRICES'); }
 
         DB::transaction(function () use ($validated, $order) {
             foreach ($validated['items'] as $item) {
@@ -258,6 +258,14 @@ class OrderController extends Controller
             $order->update(['status' => 'ordered_from_shein', 'ordered_from_shein_at' => now()]);
         });
 
+            \App\Models\Notification::notify(
+            $order->customer_id,
+            'order_accepted',
+            "تم قبول طلبك #{$order->id}",
+            null,
+            ['order_id' => $order->id]
+        );
+
         return response()->json([
             'message' => 'Order accepted.',
             'order'   => $order->load('items'),
@@ -268,8 +276,8 @@ class OrderController extends Controller
     public function reject(Request $request, Order $order)
     {
         $store = $this->currentStore($request);
-        abort_if($order->store_id !== $store->id, 403, 'This order does not belong to your store.');
-        abort_unless($order->status === 'pending', 422, 'Only a pending order can be rejected.');
+        if ($order->store_id !== $store->id) { $this->fail('This order does not belong to your store.', 'ORDER_NOT_YOURS', 403); }
+        if ($order->status !== 'pending') { $this->fail('Only a pending order can be rejected.', 'ORDER_NOT_PENDING'); }
 
         $validated = $request->validate([
             'rejection_reason' => ['nullable', 'string', 'max:500'],
@@ -281,6 +289,14 @@ class OrderController extends Controller
             'rejection_reason'  => $validated['rejection_reason'] ?? null,
         ]);
 
+            \App\Models\Notification::notify(
+            $order->customer_id,
+            'order_rejected',
+            "تم رفض طلبك #{$order->id}",
+            $order->rejection_reason,
+            ['order_id' => $order->id]
+        );
+
         return response()->json(['message' => 'Order rejected.', 'order' => $order]);
     }
 
@@ -288,10 +304,18 @@ class OrderController extends Controller
     // only while it's still pending (before the broker has bought anything)
     public function cancel(Request $request, Order $order)
     {
-        abort_unless($order->customer_id === $request->user()->id, 403, 'This is not your order.');
-        abort_unless($order->status === 'pending', 422, 'This order can no longer be cancelled.');
+       if ($order->customer_id !== $request->user()->id) { $this->fail('This is not your order.', 'ORDER_NOT_YOURS', 403); }
+        if ($order->status !== 'pending') { $this->fail('This order can no longer be cancelled.', 'ORDER_NOT_CANCELLABLE'); }
 
         $order->update(['status' => 'cancelled', 'cancelled_at' => now()]);
+
+            \App\Models\Notification::notify(
+            $order->store->user_id,
+            'order_cancelled',
+            "ألغت الزبونة الطلب #{$order->id}",
+            null,
+            ['order_id' => $order->id]
+        );
 
         return response()->json(['message' => 'Order cancelled.', 'order' => $order]);
     }
@@ -301,7 +325,7 @@ class OrderController extends Controller
     public function updateStatus(Request $request, Order $order)
     {
         $store = $this->currentStore($request);
-        abort_if($order->store_id !== $store->id, 403, 'This order does not belong to your store.');
+        if ($order->store_id !== $store->id) { $this->fail('This order does not belong to your store.', 'ORDER_NOT_YOURS', 403); }
 
         $validated = $request->validate([
             'status' => ['required', Rule::in([...self::PIPELINE, 'cancelled'])],
@@ -311,27 +335,35 @@ class OrderController extends Controller
 
         // The pending -> ordered_from_shein transition is the accept() gate, not this
         // endpoint — a broker must accept or reject before moving an order further.
-        abort_if($order->status === 'pending', 422, 'Accept or reject this order first.');
+        if ($order->status === 'pending') { $this->fail('Accept or reject this order first.', 'ORDER_PENDING_DECISION'); }
 
         // The stages that can still be cancelled — not before acceptance (that's
         // reject()) and not after the order has already arrived (received).
         $cancellableStages = array_slice(self::PIPELINE, 1, -1);
 
         if ($newStatus === 'cancelled') {
-            abort_unless(in_array($order->status, $cancellableStages), 422, 'This order can no longer be cancelled.');
+            if (! in_array($order->status, $cancellableStages)) { $this->fail('This order can no longer be cancelled.', 'ORDER_NOT_CANCELLABLE'); }
         } else {
             $currentIndex = array_search($order->status, self::PIPELINE);
             $newIndex = array_search($newStatus, self::PIPELINE);
-            abort_unless(
-                $currentIndex !== false && $newIndex === $currentIndex + 1,
-                422,
-                'Orders can only move to the next stage in the pipeline, one step at a time.'
-            );
+            if ($currentIndex === false || $newIndex !== $currentIndex + 1) { $this->fail('Orders can only move to the next stage in the pipeline, one step at a time.', 'INVALID_STATUS_TRANSITION');
         }
 
         // Column name matches the status value exactly for every stage this
         // endpoint can set (shipped, arrived, inspected, received, cancelled).
-        $order->update(['status' => $newStatus, "{$newStatus}_at" => now()]);
+                $order->update(['status' => $newStatus, "{$newStatus}_at" => now()]);
+
+        $statusLabels = [
+            'shipped' => 'تم الشحن', 'arrived' => 'وصلت', 'inspected' => 'تم الفحص',
+            'received' => 'تم الاستلام', 'cancelled' => 'تم الإلغاء',
+        ];
+        \App\Models\Notification::notify(
+            $order->customer_id,
+            'order_status_changed',
+            "طلبك #{$order->id}: " . ($statusLabels[$newStatus] ?? $newStatus),
+            null,
+            ['order_id' => $order->id, 'status' => $newStatus]
+        );
 
         return response()->json(['message' => 'Order status updated.', 'order' => $order]);
     }
@@ -396,6 +428,13 @@ class OrderController extends Controller
         usort($history, fn ($a, $b) => strcmp($a['created_at'], $b['created_at']));
 
         return $history;
+    }
+
+        // Central way to fail with both a human message and a stable machine
+    // code, so the frontend can branch on error_code instead of parsing text.
+    private function fail(string $message, string $code, int $status = 422): never
+    {
+        abort(response()->json(['message' => $message, 'error_code' => $code], $status));
     }
 
     private function applyFilters($query, Request $request, bool $customerNameSearch): void

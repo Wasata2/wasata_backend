@@ -21,13 +21,19 @@ class OrderItem extends Model
     ];
 
     // Always include the ready-to-use image URL in JSON output, alongside the raw path
-    protected $appends = ['product_image_url'];
+    protected $appends = ['product_image_url', 'image_url'];
 
-    // Turns the stored relative path (e.g. "order-items/xyz.jpg") into a full,
-    // permanent, directly-usable URL — same pattern as Store::image_url.
     public function getProductImageUrlAttribute(): ?string
     {
         return $this->product_image_path ? Storage::disk('public')->url($this->product_image_path) : null;
+    }
+
+    // Alias of product_image_url, added for naming consistency with Store,
+    // StockItem, and User — kept alongside the original so existing frontend
+    // code reading product_image_url keeps working unchanged.
+    public function getImageUrlAttribute(): ?string
+    {
+        return $this->product_image_url;
     }
 
     public function order(): BelongsTo
