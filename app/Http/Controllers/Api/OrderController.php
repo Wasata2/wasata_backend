@@ -133,6 +133,8 @@ class OrderController extends Controller
         return response()->json([
             'order'        => $order->load(['customer', 'store', 'items.serviceListing']),
             'status_times' => $this->buildStatusTimes($order),
+            'status_history' => $this->buildStatusHistory($order),
+            'totals'         => $this->buildTotals($order),
 
         ]);
     }
@@ -147,7 +149,18 @@ class OrderController extends Controller
         $query = Order::with(['customer', 'items'])->where('store_id', $store->id);
         $this->applyFilters($query, $request, customerNameSearch: true);
 
-        return response()->json(['orders' => $this->formatList($query->latest()->get())]);
+        $perPage = min((int) $request->input('per_page', 15), 100);
+        $paginated = $query->latest()->paginate($perPage);
+
+        return response()->json([
+            'orders' => $this->formatList(collect($paginated->items())),
+            'pagination' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page'    => $paginated->lastPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total(),
+            ],
+        ]);
     }
 
     // GET /api/orders/stats — broker's 4 cards: إجمالي, جديدة, قيد التنفيذ, مكتملة
@@ -179,9 +192,12 @@ class OrderController extends Controller
                 default                  => null,
             };
         }
-        $this->applyFilters($query, $request, customerNameSearch: false);
+                $this->applyFilters($query, $request, customerNameSearch: false);
 
         $all = Order::where('customer_id', $customerId);
+
+        $perPage = min((int) $request->input('per_page', 15), 100);
+        $paginated = $query->latest()->paginate($perPage);
 
         return response()->json([
             'stats' => [
@@ -189,7 +205,7 @@ class OrderController extends Controller
                 'completed'             => (clone $all)->where('status', 'received')->count(),
                 'cancelled_or_rejected' => (clone $all)->whereIn('status', ['rejected', 'cancelled'])->count(),
             ],
-            'orders' => $query->latest()->get()->map(fn ($o) => [
+            'orders' => collect($paginated->items())->map(fn ($o) => [
                 'id'                => $o->id,
                 'store_id'          => $o->store_id,
                 'store_name'        => $o->store->name,
@@ -201,6 +217,12 @@ class OrderController extends Controller
                 'reviewed'          => (bool) $o->review,
                 'status_times'      => $this->buildStatusTimes($o),
             ]),
+            'pagination' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page'    => $paginated->lastPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total(),
+            ],
         ]);
     }
 
@@ -249,7 +271,15 @@ class OrderController extends Controller
         abort_if($order->store_id !== $store->id, 403, 'This order does not belong to your store.');
         abort_unless($order->status === 'pending', 422, 'Only a pending order can be rejected.');
 
-        $order->update(['status' => 'rejected', 'rejected_at' => now()]);
+        $validated = $request->validate([
+            'rejection_reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $order->update([
+            'status'            => 'rejected',
+            'rejected_at'       => now(),
+            'rejection_reason'  => $validated['rejection_reason'] ?? null,
+        ]);
 
         return response()->json(['message' => 'Order rejected.', 'order' => $order]);
     }
@@ -330,6 +360,42 @@ class OrderController extends Controller
         }
 
         return collect($times)->map(fn ($t) => $t->toISOString())->toArray();
+    }
+
+        // "items_total" (sum of confirmed unit_price × quantity — null prices count
+    // as 0, since the broker hasn't priced them yet) + delivery_fee = total_amount.
+    // There's no separate service_fee line: each service's fee is already baked
+    // into unit_price at accept() time, not charged as a standalone add-on.
+    private function buildTotals(Order $order): array
+    {
+        $itemsTotal = $order->items->sum(fn ($item) => ($item->unit_price ?? 0) * $item->quantity);
+        $deliveryFee = $order->delivery_fee ?? 0;
+
+        return [
+            'items_total'   => round($itemsTotal, 2),
+            'service_fee'   => 0, // always 0 — see comment above
+            'delivery_fee'  => round((float) $deliveryFee, 2),
+            'total_amount'  => round($itemsTotal + $deliveryFee, 2),
+        ];
+    }
+
+        // Ordered array version of the same per-stage timestamps buildStatusTimes()
+    // returns as a map — sorted chronologically, only stages the order reached.
+    private function buildStatusHistory(Order $order): array
+    {
+        $stages = ['pending', 'ordered_from_shein', 'shipped', 'arrived', 'inspected', 'received', 'rejected', 'cancelled'];
+
+        $history = [];
+        foreach ($stages as $stage) {
+            $time = $stage === 'pending' ? $order->created_at : $order->{"{$stage}_at"};
+            if ($time) {
+                $history[] = ['status' => $stage, 'created_at' => $time->toISOString()];
+            }
+        }
+
+        usort($history, fn ($a, $b) => strcmp($a['created_at'], $b['created_at']));
+
+        return $history;
     }
 
     private function applyFilters($query, Request $request, bool $customerNameSearch): void
