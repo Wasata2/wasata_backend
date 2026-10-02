@@ -433,7 +433,6 @@ class OrderController extends Controller
     }
 
 
-
     private function applyFilters($query, Request $request, bool $customerNameSearch): void
     {
         if ($request->filled('date')) {

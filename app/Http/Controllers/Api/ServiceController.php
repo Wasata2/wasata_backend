@@ -67,11 +67,17 @@ class ServiceController extends Controller
     }
 
     // PATCH /api/services/{service} — "تعديل"
-    public function update(Request $request, ServiceListing $service)
+        public function update(Request $request, ServiceListing $service)
     {
         $store = $this->currentStore($request);
         if ($service->store_id !== $store->id) {
             $this->fail('This service does not belong to your store.', 'SERVICE_NOT_YOURS', 403);
+        }
+
+        $validated = $request->validate($this->rules('update'));
+
+        if (isset($validated['fee_type']) && in_array($validated['fee_type'], ['free', 'variable'])) {
+            $validated['fee_amount'] = null;
         }
 
         $service->update($validated);
