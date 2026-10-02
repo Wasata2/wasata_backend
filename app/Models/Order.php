@@ -14,7 +14,8 @@ class Order extends Model
     'delivery_method', 'delivery_fee', 'address', 'contact_phone',
     'ordered_from_shein_at', 'shipped_at', 'arrived_at',
     'inspected_at', 'received_at', 'rejected_at', 'cancelled_at',
-    'rejection_reason',
+    'rejection_reason', 'delivery_area',
+
 ];
 
     // Without these, the new *_at columns would come back as raw strings

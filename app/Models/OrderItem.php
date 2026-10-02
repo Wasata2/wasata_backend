@@ -13,6 +13,7 @@ class OrderItem extends Model
         'service_listing_id',
         'quantity',
         'unit_price',
+        'product_name',
         'product_url',
         'product_image_path',
         'color',
@@ -20,7 +21,6 @@ class OrderItem extends Model
         'item_note',
     ];
 
-    // Always include the ready-to-use image URL in JSON output, alongside the raw path
     protected $appends = ['product_image_url', 'image_url'];
 
     public function getProductImageUrlAttribute(): ?string
@@ -28,9 +28,8 @@ class OrderItem extends Model
         return $this->product_image_path ? Storage::disk('public')->url($this->product_image_path) : null;
     }
 
-    // Alias of product_image_url, added for naming consistency with Store,
-    // StockItem, and User — kept alongside the original so existing frontend
-    // code reading product_image_url keeps working unchanged.
+    // Alias — same value as product_image_url, kept for naming consistency
+    // with Store/StockItem/User.
     public function getImageUrlAttribute(): ?string
     {
         return $this->product_image_url;

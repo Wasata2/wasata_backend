@@ -31,6 +31,7 @@ class OrderController extends Controller
             'store_id'                    => ['required', 'exists:stores,id'],
             'delivery_method'             => ['required', Rule::in(['home_delivery', 'pickup'])],
             'address'                     => ['required_if:delivery_method,home_delivery', 'nullable', 'string', 'max:255'],
+            'delivery_area'               => ['required_if:delivery_method,home_delivery', 'nullable', \Illuminate\Validation\Rule::in(\App\Models\StoreDeliveryZone::AREAS)],
             'contact_phone'               => ['nullable', 'string', 'max:20'],
             'customer_note'               => ['nullable', 'string'],
             'estimated_amount'            => ['nullable', 'numeric', 'min:0'],
@@ -53,6 +54,18 @@ class OrderController extends Controller
             $this->fail('This broker has not set a pickup location, so pickup is not available.', 'PICKUP_NOT_AVAILABLE');
         }
 
+        // The backend computes delivery_fee from the zone's current fee — never
+        // trust a fee sent by the frontend, and never read it later (see note
+        // on Order::delivery_fee below: it's a snapshot, locked in now).
+        $deliveryFee = null;
+        if ($validated['delivery_method'] === 'home_delivery') {
+            $zone = $store->deliveryZones()->where('area', $validated['delivery_area'])->first();
+            if (! $zone) {
+                $this->fail('This broker does not deliver to the selected area.', 'DELIVERY_AREA_NOT_SERVED');
+            }
+            $deliveryFee = $zone->fee;
+        }
+
         // Only look up services for items that actually picked one — a null
         // service_listing_id is valid now and simply skips this check.
         $serviceIds = collect($validated['items'])->pluck('service_listing_id')->filter();
@@ -71,7 +84,9 @@ class OrderController extends Controller
             }
         }
 
-        $order = DB::transaction(function () use ($validated, $store, $request, $services) {
+        // FIX 1: $deliveryFee added to the use() clause — it was computed above but
+        // never passed into the closure, causing an "undefined variable" error.
+        $order = DB::transaction(function () use ($validated, $store, $request, $services, $deliveryFee) {
             $order = Order::create([
                 'store_id'         => $store->id,
                 'customer_id'      => $request->user()->id,
@@ -81,7 +96,8 @@ class OrderController extends Controller
                 'delivery_method'  => $validated['delivery_method'],
                 'address'          => $validated['address'] ?? null,
                 'contact_phone'    => $validated['contact_phone'] ?? null,
-                'delivery_fee'     => $validated['delivery_method'] === 'home_delivery' ? $store->delivery_fee : null,
+                'delivery_area'    => $validated['delivery_area'] ?? null,
+                'delivery_fee'     => $deliveryFee,
             ]);
 
             foreach ($validated['items'] as $index => $item) {
@@ -170,16 +186,18 @@ class OrderController extends Controller
         ]);
     }
 
-    // GET /api/orders/stats — broker's 4 cards
+    // GET /api/orders/stats — broker's 4 (now 5) cards
     public function stats(Request $request)
     {
         $store = $this->currentStore($request);
 
         return response()->json([
-            'total'       => $store->orders()->count(),
-            'new'         => $store->orders()->where('status', 'pending')->count(),
-            'in_progress' => $store->orders()->whereIn('status', ['ordered_from_shein', 'shipped', 'arrived', 'inspected'])->count(),
-            'completed'   => $store->orders()->where('status', 'received')->count(),
+            'total'                 => $store->orders()->count(),
+            'new'                   => $store->orders()->where('status', 'pending')->count(),
+            'in_progress'           => $store->orders()->whereIn('status', ['ordered_from_shein', 'shipped', 'arrived', 'inspected'])->count(),
+            'completed'             => $store->orders()->where('status', 'received')->count(),
+            // FIX 3: added so the "ملغى/مرفوض" tab/badge has a real count to show.
+            'cancelled_or_rejected' => $store->orders()->whereIn('status', ['rejected', 'cancelled'])->count(),
         ]);
     }
 
@@ -190,13 +208,11 @@ class OrderController extends Controller
 
         $query = Order::with(['store', 'items', 'review'])->where('customer_id', $customerId);
 
-        if ($request->filled('status')) {
-            match ($request->status) {
-                'active'                 => $query->whereNotIn('status', ['received', 'rejected', 'cancelled']),
-                'completed'              => $query->where('status', 'received'),
-                'cancelled_or_rejected'  => $query->whereIn('status', ['rejected', 'cancelled']),
-                default                  => null,
-            };
+        // 'active' stays handled here (customer-only concept, not a real status
+        // column value) — everything else ('completed', 'cancelled_or_rejected',
+        // a direct status) is now handled inside applyFilters() itself.
+        if ($request->status === 'active') {
+            $query->whereNotIn('status', ['received', 'rejected', 'cancelled']);
         }
         $this->applyFilters($query, $request, customerNameSearch: false);
 
@@ -432,7 +448,12 @@ class OrderController extends Controller
         return $history;
     }
 
-
+    // FIX 2: 'cancelled_or_rejected' is now handled inside the match itself, instead
+    // of being excluded from filtering. Previously, index() (the broker's table) passed
+    // this value straight to applyFilters() with no pre-handling, so the exclusion list
+    // silently skipped filtering altogether and returned every order regardless of status.
+    // Only 'active' stays excluded — it's a customer-only concept (myOrders) that's
+    // already resolved to a whereNotIn() before this method ever runs.
     private function applyFilters($query, Request $request, bool $customerNameSearch): void
     {
         if ($request->filled('date')) {
@@ -451,12 +472,12 @@ class OrderController extends Controller
             });
         }
 
-        if ($request->filled('status') && $request->status !== 'all'
-            && ! in_array($request->status, ['active', 'cancelled_or_rejected'])) {
+        if ($request->filled('status') && $request->status !== 'all' && $request->status !== 'active') {
             match ($request->status) {
-                'in_progress' => $query->whereIn('status', ['ordered_from_shein', 'shipped', 'arrived', 'inspected']),
-                'completed'   => $query->where('status', 'received'),
-                default       => $query->where('status', $request->status),
+                'in_progress'           => $query->whereIn('status', ['ordered_from_shein', 'shipped', 'arrived', 'inspected']),
+                'completed'             => $query->where('status', 'received'),
+                'cancelled_or_rejected' => $query->whereIn('status', ['rejected', 'cancelled']),
+                default                 => $query->where('status', $request->status),
             };
         }
     }

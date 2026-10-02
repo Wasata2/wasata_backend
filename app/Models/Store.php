@@ -59,4 +59,9 @@ class Store extends Model
     {
         return $this->hasMany(Review::class);
     }
+
+    public function deliveryZones(): HasMany
+    {
+        return $this->hasMany(StoreDeliveryZone::class);
+    }
 }

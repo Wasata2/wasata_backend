@@ -27,6 +27,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/stores', [StoreController::class, 'store']);
     Route::get('/stores/me', [StoreController::class, 'myStore']);
     Route::patch('/stores/me', [StoreController::class, 'update']);
+    Route::put('/stores/me/delivery-zones', [StoreController::class, 'updateDeliveryZones']);
     Route::get('/stores/{store}', [StoreController::class, 'show']);
     Route::get('/stores/{store}/reviews', [ReviewController::class, 'forStore']);
 

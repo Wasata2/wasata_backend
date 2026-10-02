@@ -64,7 +64,8 @@ class StoreController extends Controller
                 'accepts_whatsapp_orders' => $store->accepts_whatsapp_orders,
                 'commission_rate'         => $store->commission_rate,
                 'delivery_time_range'     => $store->delivery_time_range,
-                'delivery_fee'            => $store->delivery_fee,
+                'delivery_fee'            => $store->delivery_fee, // ⚠️ deprecated, see note below
+                'delivery_zones'          => $store->deliveryZones()->get(['area', 'fee']),
                 'pickup_location'         => $store->pickup_location,
                 'average_rating'          => round($store->reviews()->avg('rating') ?? 0, 1),
                 'total_reviews'           => $store->reviews()->count(),
@@ -123,7 +124,9 @@ class StoreController extends Controller
         }
 
         return response()->json([
-            'store' => $store,
+            'store' => array_merge($store->toArray(), [
+            'delivery_zones' => $store->deliveryZones()->get(['area', 'fee']),
+            ]),
         ], 200);
     }
 
@@ -161,5 +164,33 @@ class StoreController extends Controller
             'message' => 'Store updated successfully.',
             'store'   => $store,
         ], 200);
+    }
+
+        // PUT /api/stores/me/delivery-zones
+    public function updateDeliveryZones(Request $request)
+    {
+        $store = Store::where('user_id', $request->user()->id)->first();
+        if (! $store) {
+            $this->fail('You have not created a store yet.', 'STORE_NOT_FOUND', 404);
+        }
+
+        $validated = $request->validate([
+            'zones'           => ['required', 'array'],
+            'zones.*.area'    => ['required', \Illuminate\Validation\Rule::in(\App\Models\StoreDeliveryZone::AREAS)],
+            'zones.*.fee'     => ['required', 'numeric', 'min:0'],
+        ]);
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($store, $validated) {
+            // Replace entirely — simplest way to handle add/remove/update in one call
+            $store->deliveryZones()->delete();
+            foreach ($validated['zones'] as $zone) {
+                $store->deliveryZones()->create($zone);
+            }
+        });
+
+        return response()->json([
+            'message' => 'Delivery zones updated successfully.',
+            'zones'   => $store->deliveryZones()->get(['area', 'fee']),
+        ]);
     }
 }
