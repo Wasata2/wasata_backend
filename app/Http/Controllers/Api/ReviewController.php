@@ -74,12 +74,14 @@ class ReviewController extends Controller
         return response()->json([
             'message' => 'Review submitted successfully.',
             'review'  => [
-                'id'            => $review->id,
-                'rating'        => $review->rating,
-                'comment'       => $review->comment,
-                'order_id'      => $review->order_id,
-                'customer_name' => $request->user()->full_name,
-                'created_at'    => $review->created_at,
+                'id'                             => $review->id,
+                'rating'                         => $review->rating,
+                'comment'                        => $review->comment,
+                'order_id'                       => $review->order_id,
+                'customer_name'                  => $request->user()->full_name,
+                // Added for consistency with index()/forStore() below.
+                'customer_profile_picture_url'   => $request->user()->profile_picture_url,
+                'created_at'                     => $review->created_at,
             ],
         ], 201);
     }
@@ -113,12 +115,15 @@ class ReviewController extends Controller
             'total_reviews'  => $total,
             'distribution'   => $distribution,
             'reviews'        => $reviews->map(fn ($r) => [
-                'id'            => $r->id,
-                'customer_name' => $r->customer->full_name,
-                'rating'        => $r->rating,
-                'comment'       => $r->comment,
-                'order_id'      => $r->order_id,
-                'date'          => $r->created_at->format('d F Y'),
+                'id'                             => $r->id,
+                'customer_name'                  => $r->customer->full_name,
+                // FIX: was missing entirely — this is why only the "D" fallback
+                // avatar ever showed, regardless of what the frontend was reading.
+                'customer_profile_picture_url'   => $r->customer->profile_picture_url,
+                'rating'                         => $r->rating,
+                'comment'                        => $r->comment,
+                'order_id'                       => $r->order_id,
+                'date'                           => $r->created_at->format('d F Y'),
             ]),
         ]);
     }
@@ -152,12 +157,15 @@ class ReviewController extends Controller
             'total_reviews'  => $total,
             'distribution'   => $distribution,
             'reviews'        => $reviews->map(fn ($r) => [
-                'id'            => $r->id,
-                'customer_name' => $r->customer->full_name,
-                'rating'        => $r->rating,
-                'comment'       => $r->comment,
-                'order_id'      => $r->order_id,
-                'date'          => $r->created_at->format('d F Y'),
+                'id'                             => $r->id,
+                'customer_name'                  => $r->customer->full_name,
+                // FIX: was missing entirely — this is why only the "D" fallback
+                // avatar ever showed, regardless of what the frontend was reading.
+                'customer_profile_picture_url'   => $r->customer->profile_picture_url,
+                'rating'                         => $r->rating,
+                'comment'                        => $r->comment,
+                'order_id'                       => $r->order_id,
+                'date'                           => $r->created_at->format('d F Y'),
             ]),
         ]);
     }
