@@ -37,21 +37,23 @@ class OrderController extends Controller
             'items'                       => ['required', 'array', 'min:1'],
             'items.*.service_listing_id'  => ['nullable', 'exists:service_listings,id'],
             'items.*.quantity'            => ['required', 'integer', 'min:1'],
-            // Product details the customer fills in for the SHEIN item behind this line —
-            // optional since not every service (e.g. a pure shipping fee) has one.
             'items.*.product_name'        => ['required', 'string', 'max:150'],
             'items.*.product_url'         => ['nullable', 'url', 'max:2048'],
-            'items.*.product_image'       => ['nullable', 'image', 'max:4096'], // 4MB max, like Store::image
+            'items.*.product_image'       => ['nullable', 'image', 'max:4096'],
             'items.*.color'               => ['nullable', 'string', 'max:50'],
             'items.*.size'                => ['nullable', 'string', 'max:50'],
             'items.*.item_note'           => ['nullable', 'string', 'max:255'],
         ]);
 
         $store = Store::findOrFail($validated['store_id']);
-        if (! $store->is_accepting_orders) { $this->fail('This broker is not accepting orders right now.', 'STORE_NOT_ACCEPTING_ORDERS'); }
-        if ($validated['delivery_method'] === 'pickup' && ! $store->pickup_location) { $this->fail('This broker has not set a pickup location, so pickup is not available.', 'PICKUP_NOT_AVAILABLE'); }
+        if (! $store->is_accepting_orders) {
+            $this->fail('This broker is not accepting orders right now.', 'STORE_NOT_ACCEPTING_ORDERS');
+        }
+        if ($validated['delivery_method'] === 'pickup' && ! $store->pickup_location) {
+            $this->fail('This broker has not set a pickup location, so pickup is not available.', 'PICKUP_NOT_AVAILABLE');
+        }
 
-                // Only look up services for items that actually picked one — a null
+        // Only look up services for items that actually picked one — a null
         // service_listing_id is valid now and simply skips this check.
         $serviceIds = collect($validated['items'])->pluck('service_listing_id')->filter();
 
@@ -63,7 +65,9 @@ class OrderController extends Controller
 
         foreach ($validated['items'] as $item) {
             if (! empty($item['service_listing_id'])) {
-            if (! $services->has($item['service_listing_id'])) { $this->fail('One of the selected services is not available from this store.', 'SERVICE_NOT_AVAILABLE');
+                if (! $services->has($item['service_listing_id'])) {
+                    $this->fail('One of the selected services is not available from this store.', 'SERVICE_NOT_AVAILABLE');
+                }
             }
         }
 
@@ -77,18 +81,14 @@ class OrderController extends Controller
                 'delivery_method'  => $validated['delivery_method'],
                 'address'          => $validated['address'] ?? null,
                 'contact_phone'    => $validated['contact_phone'] ?? null,
-                // Snapshot now — pickup has no fee; home delivery locks in the store's
-                // current fee so a later change by the broker won't alter this order.
                 'delivery_fee'     => $validated['delivery_method'] === 'home_delivery' ? $store->delivery_fee : null,
             ]);
 
-        foreach ($validated['items'] as $index => $item) {
-            $service = ! empty($item['service_listing_id'])
+            foreach ($validated['items'] as $index => $item) {
+                $service = ! empty($item['service_listing_id'])
                     ? $services[$item['service_listing_id']]
                     : null;
 
-                // Files inside an array field arrive as items.{index}.product_image,
-                // not inside $validated (validate() only returns non-file input).
                 $imagePath = null;
                 if ($request->hasFile("items.$index.product_image")) {
                     $imagePath = $request->file("items.$index.product_image")->store('order-items', 'public');
@@ -101,13 +101,19 @@ class OrderController extends Controller
                     'unit_price'          => $service && in_array($service->fee_type, ['fixed', 'percentage'])
                         ? $service->fee_amount
                         : null,
+                    'product_name'        => $item['product_name'],
+                    'product_url'         => $item['product_url'] ?? null,
+                    'product_image_path'  => $imagePath,
+                    'color'               => $item['color'] ?? null,
+                    'size'                => $item['size'] ?? null,
+                    'item_note'           => $item['item_note'] ?? null,
                 ]);
             }
 
             return $order;
         });
 
-            \App\Models\Notification::notify(
+        \App\Models\Notification::notify(
             $store->user_id,
             'order_placed',
             "طلب جديد #{$order->id}",
@@ -128,20 +134,21 @@ class OrderController extends Controller
         $isBroker   = $order->store->user_id === $user->id;
         $isCustomer = $order->customer_id === $user->id;
 
-        if (! $isBroker && ! $isCustomer) { $this->fail('You do not have access to this order.', 'ORDER_ACCESS_DENIED', 403); }
-        $order->load(['customer', 'store', 'items.serviceListing']);
-        return response()->json([
-            'order'        => $order->load(['customer', 'store', 'items.serviceListing']),
-            'status_times' => $this->buildStatusTimes($order),
-            'status_history' => $this->buildStatusHistory($order),
-            'totals'         => $this->buildTotals($order),
+        if (! $isBroker && ! $isCustomer) {
+            $this->fail('You do not have access to this order.', 'ORDER_ACCESS_DENIED', 403);
+        }
 
+        $order->load(['customer', 'store', 'items.serviceListing']);
+
+        return response()->json([
+            'order'           => array_merge($order->toArray(), ['date' => $this->formatArabicDate($order)]),
+            'status_times'    => $this->buildStatusTimes($order),
+            'status_history'  => $this->buildStatusHistory($order),
+            'totals'          => $this->buildTotals($order),
         ]);
     }
 
     // GET /api/orders — BROKER's incoming orders table
-    // ?status=pending|ordered_from_shein|shipped|arrived|inspected|received|rejected|cancelled
-    // ?date=2026-08-24   ?search=1042
     public function index(Request $request)
     {
         $store = $this->currentStore($request);
@@ -163,7 +170,7 @@ class OrderController extends Controller
         ]);
     }
 
-    // GET /api/orders/stats — broker's 4 cards: إجمالي, جديدة, قيد التنفيذ, مكتملة
+    // GET /api/orders/stats — broker's 4 cards
     public function stats(Request $request)
     {
         $store = $this->currentStore($request);
@@ -176,8 +183,7 @@ class OrderController extends Controller
         ]);
     }
 
-    // GET /api/my-orders — CUSTOMER's own order history ("طلباتي" page)
-    // ?status=active|completed|cancelled_or_rejected   ?date=...   ?search=...
+    // GET /api/my-orders — CUSTOMER's own order history
     public function myOrders(Request $request)
     {
         $customerId = $request->user()->id;
@@ -192,7 +198,7 @@ class OrderController extends Controller
                 default                  => null,
             };
         }
-                $this->applyFilters($query, $request, customerNameSearch: false);
+        $this->applyFilters($query, $request, customerNameSearch: false);
 
         $all = Order::where('customer_id', $customerId);
 
@@ -226,27 +232,28 @@ class OrderController extends Controller
         ]);
     }
 
-    // PATCH /api/orders/{order}/accept — pending -> ordered_from_shein (the first ✓ step)
+    // PATCH /api/orders/{order}/accept
     public function accept(Request $request, Order $order)
     {
         $store = $this->currentStore($request);
-        if ($order->store_id !== $store->id) { $this->fail('This order does not belong to your store.', 'ORDER_NOT_YOURS', 403); }
-        if ($order->status !== 'pending') { $this->fail('Only a pending order can be accepted.', 'ORDER_NOT_PENDING'); }
+        if ($order->store_id !== $store->id) {
+            $this->fail('This order does not belong to your store.', 'ORDER_NOT_YOURS', 403);
+        }
+        if ($order->status !== 'pending') {
+            $this->fail('Only a pending order can be accepted.', 'ORDER_NOT_PENDING');
+        }
 
-        // The broker sets the real, confirmed price PER ITEM at the moment she
-        // accepts — every item belonging to this order must get a price.
         $validated = $request->validate([
             'items'              => ['required', 'array', 'min:1'],
             'items.*.id'         => ['required', 'integer', Rule::exists('order_items', 'id')->where('order_id', $order->id)],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
         ]);
 
-        // Make sure NO item is left without a price: the submitted ids must be
-        // exactly the order's item ids (the exists rule above only proves each
-        // submitted id belongs to this order, not that all of them were sent).
         $orderItemIds = $order->items()->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
         $submittedIds = collect($validated['items'])->pluck('id')->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
-        if ($orderItemIds !== $submittedIds) { $this->fail('Every item in the order must be given a price.', 'MISSING_ITEM_PRICES'); }
+        if ($orderItemIds !== $submittedIds) {
+            $this->fail('Every item in the order must be given a price.', 'MISSING_ITEM_PRICES');
+        }
 
         DB::transaction(function () use ($validated, $order) {
             foreach ($validated['items'] as $item) {
@@ -258,7 +265,7 @@ class OrderController extends Controller
             $order->update(['status' => 'ordered_from_shein', 'ordered_from_shein_at' => now()]);
         });
 
-            \App\Models\Notification::notify(
+        \App\Models\Notification::notify(
             $order->customer_id,
             'order_accepted',
             "تم قبول طلبك #{$order->id}",
@@ -276,8 +283,12 @@ class OrderController extends Controller
     public function reject(Request $request, Order $order)
     {
         $store = $this->currentStore($request);
-        if ($order->store_id !== $store->id) { $this->fail('This order does not belong to your store.', 'ORDER_NOT_YOURS', 403); }
-        if ($order->status !== 'pending') { $this->fail('Only a pending order can be rejected.', 'ORDER_NOT_PENDING'); }
+        if ($order->store_id !== $store->id) {
+            $this->fail('This order does not belong to your store.', 'ORDER_NOT_YOURS', 403);
+        }
+        if ($order->status !== 'pending') {
+            $this->fail('Only a pending order can be rejected.', 'ORDER_NOT_PENDING');
+        }
 
         $validated = $request->validate([
             'rejection_reason' => ['nullable', 'string', 'max:500'],
@@ -289,7 +300,7 @@ class OrderController extends Controller
             'rejection_reason'  => $validated['rejection_reason'] ?? null,
         ]);
 
-            \App\Models\Notification::notify(
+        \App\Models\Notification::notify(
             $order->customer_id,
             'order_rejected',
             "تم رفض طلبك #{$order->id}",
@@ -300,16 +311,19 @@ class OrderController extends Controller
         return response()->json(['message' => 'Order rejected.', 'order' => $order]);
     }
 
-    // PATCH /api/orders/{order}/cancel — the CUSTOMER cancelling her own order,
-    // only while it's still pending (before the broker has bought anything)
+    // PATCH /api/orders/{order}/cancel
     public function cancel(Request $request, Order $order)
     {
-       if ($order->customer_id !== $request->user()->id) { $this->fail('This is not your order.', 'ORDER_NOT_YOURS', 403); }
-        if ($order->status !== 'pending') { $this->fail('This order can no longer be cancelled.', 'ORDER_NOT_CANCELLABLE'); }
+        if ($order->customer_id !== $request->user()->id) {
+            $this->fail('This is not your order.', 'ORDER_NOT_YOURS', 403);
+        }
+        if ($order->status !== 'pending') {
+            $this->fail('This order can no longer be cancelled.', 'ORDER_NOT_CANCELLABLE');
+        }
 
         $order->update(['status' => 'cancelled', 'cancelled_at' => now()]);
 
-            \App\Models\Notification::notify(
+        \App\Models\Notification::notify(
             $order->store->user_id,
             'order_cancelled',
             "ألغت الزبونة الطلب #{$order->id}",
@@ -320,12 +334,13 @@ class OrderController extends Controller
         return response()->json(['message' => 'Order cancelled.', 'order' => $order]);
     }
 
-    // PATCH /api/orders/{order}/status — broker moves the order forward through the
-    // 6-stage timeline (shipped, arrived, inspected, received) or cancels it
+    // PATCH /api/orders/{order}/status
     public function updateStatus(Request $request, Order $order)
     {
         $store = $this->currentStore($request);
-        if ($order->store_id !== $store->id) { $this->fail('This order does not belong to your store.', 'ORDER_NOT_YOURS', 403); }
+        if ($order->store_id !== $store->id) {
+            $this->fail('This order does not belong to your store.', 'ORDER_NOT_YOURS', 403);
+        }
 
         $validated = $request->validate([
             'status' => ['required', Rule::in([...self::PIPELINE, 'cancelled'])],
@@ -333,25 +348,25 @@ class OrderController extends Controller
 
         $newStatus = $validated['status'];
 
-        // The pending -> ordered_from_shein transition is the accept() gate, not this
-        // endpoint — a broker must accept or reject before moving an order further.
-        if ($order->status === 'pending') { $this->fail('Accept or reject this order first.', 'ORDER_PENDING_DECISION'); }
+        if ($order->status === 'pending') {
+            $this->fail('Accept or reject this order first.', 'ORDER_PENDING_DECISION');
+        }
 
-        // The stages that can still be cancelled — not before acceptance (that's
-        // reject()) and not after the order has already arrived (received).
         $cancellableStages = array_slice(self::PIPELINE, 1, -1);
 
         if ($newStatus === 'cancelled') {
-            if (! in_array($order->status, $cancellableStages)) { $this->fail('This order can no longer be cancelled.', 'ORDER_NOT_CANCELLABLE'); }
+            if (! in_array($order->status, $cancellableStages)) {
+                $this->fail('This order can no longer be cancelled.', 'ORDER_NOT_CANCELLABLE');
+            }
         } else {
             $currentIndex = array_search($order->status, self::PIPELINE);
             $newIndex = array_search($newStatus, self::PIPELINE);
-            if ($currentIndex === false || $newIndex !== $currentIndex + 1) { $this->fail('Orders can only move to the next stage in the pipeline, one step at a time.', 'INVALID_STATUS_TRANSITION');
+            if ($currentIndex === false || $newIndex !== $currentIndex + 1) {
+                $this->fail('Orders can only move to the next stage in the pipeline, one step at a time.', 'INVALID_STATUS_TRANSITION');
+            }
         }
 
-        // Column name matches the status value exactly for every stage this
-        // endpoint can set (shipped, arrived, inspected, received, cancelled).
-                $order->update(['status' => $newStatus, "{$newStatus}_at" => now()]);
+        $order->update(['status' => $newStatus, "{$newStatus}_at" => now()]);
 
         $statusLabels = [
             'shipped' => 'تم الشحن', 'arrived' => 'وصلت', 'inspected' => 'تم الفحص',
@@ -370,16 +385,9 @@ class OrderController extends Controller
 
     private function formatArabicDate($order): string
     {
-        // created_at is stored/read in UTC — convert to Gaza local time before
-        // formatting, or every list built with this helper runs ~3 hours behind
-        // (Asia/Gaza correctly follows DST, unlike a hardcoded +3 offset).
-        // e.g. "10 سبتمبر 2026 · 10:30 ص" — matches the Figma design exactly
         return $order->created_at->copy()->timezone('Asia/Gaza')->locale('ar')->translatedFormat('j F Y \· h:i A');
     }
 
-    // Builds the per-stage timestamp map the frontend timeline needs.
-    // "pending" always uses the order's creation time; every other stage
-    // only appears once the order has actually reached it.
     private function buildStatusTimes(Order $order): array
     {
         $times = ['pending' => $order->created_at];
@@ -394,10 +402,6 @@ class OrderController extends Controller
         return collect($times)->map(fn ($t) => $t->toISOString())->toArray();
     }
 
-        // "items_total" (sum of confirmed unit_price × quantity — null prices count
-    // as 0, since the broker hasn't priced them yet) + delivery_fee = total_amount.
-    // There's no separate service_fee line: each service's fee is already baked
-    // into unit_price at accept() time, not charged as a standalone add-on.
     private function buildTotals(Order $order): array
     {
         $itemsTotal = $order->items->sum(fn ($item) => ($item->unit_price ?? 0) * $item->quantity);
@@ -405,14 +409,12 @@ class OrderController extends Controller
 
         return [
             'items_total'   => round($itemsTotal, 2),
-            'service_fee'   => 0, // always 0 — see comment above
+            'service_fee'   => 0,
             'delivery_fee'  => round((float) $deliveryFee, 2),
             'total_amount'  => round($itemsTotal + $deliveryFee, 2),
         ];
     }
 
-        // Ordered array version of the same per-stage timestamps buildStatusTimes()
-    // returns as a map — sorted chronologically, only stages the order reached.
     private function buildStatusHistory(Order $order): array
     {
         $stages = ['pending', 'ordered_from_shein', 'shipped', 'arrived', 'inspected', 'received', 'rejected', 'cancelled'];
@@ -430,12 +432,7 @@ class OrderController extends Controller
         return $history;
     }
 
-        // Central way to fail with both a human message and a stable machine
-    // code, so the frontend can branch on error_code instead of parsing text.
-    private function fail(string $message, string $code, int $status = 422): never
-    {
-        abort(response()->json(['message' => $message, 'error_code' => $code], $status));
-    }
+
 
     private function applyFilters($query, Request $request, bool $customerNameSearch): void
     {
@@ -457,10 +454,6 @@ class OrderController extends Controller
 
         if ($request->filled('status') && $request->status !== 'all'
             && ! in_array($request->status, ['active', 'cancelled_or_rejected'])) {
-            // 'in_progress' and 'completed' are UI-level groupings, not real enum
-            // values — map them to the pipeline stages they actually represent.
-            // Everything else (pending, rejected, cancelled, or a literal pipeline
-            // stage like 'shipped') is passed straight through.
             match ($request->status) {
                 'in_progress' => $query->whereIn('status', ['ordered_from_shein', 'shipped', 'arrived', 'inspected']),
                 'completed'   => $query->where('status', 'received'),
