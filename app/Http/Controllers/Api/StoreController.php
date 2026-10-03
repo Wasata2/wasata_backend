@@ -195,32 +195,4 @@ class StoreController extends Controller
         $request->merge(['delivery_zones' => $request->input('zones', [])]);
         return $this->update($request);
     }
-
-        // PUT /api/stores/me/delivery-zones
-    public function updateDeliveryZones(Request $request)
-    {
-        $store = Store::where('user_id', $request->user()->id)->first();
-        if (! $store) {
-            $this->fail('You have not created a store yet.', 'STORE_NOT_FOUND', 404);
-        }
-
-        $validated = $request->validate([
-            'zones'           => ['required', 'array'],
-            'zones.*.area'    => ['required', \Illuminate\Validation\Rule::in(\App\Models\StoreDeliveryZone::AREAS)],
-            'zones.*.fee'     => ['required', 'numeric', 'min:0'],
-        ]);
-
-        \Illuminate\Support\Facades\DB::transaction(function () use ($store, $validated) {
-            // Replace entirely — simplest way to handle add/remove/update in one call
-            $store->deliveryZones()->delete();
-            foreach ($validated['zones'] as $zone) {
-                $store->deliveryZones()->create($zone);
-            }
-        });
-
-        return response()->json([
-            'message' => 'Delivery zones updated successfully.',
-            'zones'   => $store->deliveryZones()->get(['area', 'fee']),
-        ]);
-    }
 }
