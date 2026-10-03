@@ -228,15 +228,33 @@ class StockItemController extends Controller
     }
 
     // PATCH /api/stock-items/{item}/reserve — the CUSTOMER requesting to buy it
+        // PATCH /api/stock-items/{item}/reserve — the CUSTOMER requesting to buy it
     public function reserve(Request $request, StockItem $item)
     {
         if ($item->status !== 'listed') {
             $this->fail('This item is not available for reservation.', 'STOCK_ITEM_NOT_LISTED');
         }
 
+        $validated = $request->validate([
+            'delivery_method' => ['required', \Illuminate\Validation\Rule::in(['home_delivery', 'pickup'])],
+            'delivery_region' => ['required_if:delivery_method,home_delivery', 'nullable', \Illuminate\Validation\Rule::in(\App\Models\StoreDeliveryZone::REGIONS)],
+        ]);
+
+        $deliveryFee = null;
+        if ($validated['delivery_method'] === 'home_delivery') {
+            $zone = $item->store->deliveryZones()->where('region', $validated['delivery_region'])->first();
+            if (! $zone) {
+                $this->fail('This broker does not deliver to the selected region.', 'DELIVERY_REGION_NOT_SERVED');
+            }
+            $deliveryFee = $zone->fee;
+        }
+
         $item->update([
-            'status'      => 'reserved',
-            'customer_id' => $request->user()->id,
+            'status'           => 'reserved',
+            'customer_id'      => $request->user()->id,
+            'delivery_method'  => $validated['delivery_method'],
+            'delivery_region'  => $validated['delivery_region'] ?? null,
+            'delivery_fee'     => $deliveryFee,
         ]);
 
             \App\Models\Notification::notify(

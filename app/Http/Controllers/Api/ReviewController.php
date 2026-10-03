@@ -89,20 +89,21 @@ class ReviewController extends Controller
     // GET /api/stores/{store}/reviews — public: same shape as index() (average,
     // distribution, list) but for any published store, for the CUSTOMER's view
     // of a broker's profile page.
-    public function forStore(Store $store)
+        // GET /api/stores/{store}/reviews — ?page=1&per_page=15
+    public function forStore(Request $request, Store $store)
     {
-        abort_unless($store->status === 'published', 404, 'This store is not available.');
+        if ($store->status !== 'published') {
+            $this->fail('This store is not available.', 'STORE_NOT_PUBLISHED', 404);
+        }
 
-        $reviews = Review::with('customer')
-            ->where('store_id', $store->id)
-            ->latest()
-            ->get();
+        $query = Review::with('customer')->where('store_id', $store->id)->latest();
 
-        $total = $reviews->count();
+        $allReviews = (clone $query)->get(); // for rating/distribution — needs the full set, not just this page
+        $total = $allReviews->count();
 
         $distribution = [];
         for ($star = 5; $star >= 1; $star--) {
-            $count = $reviews->where('rating', $star)->count();
+            $count = $allReviews->where('rating', $star)->count();
             $distribution[] = [
                 'stars'      => $star,
                 'count'      => $count,
@@ -110,21 +111,27 @@ class ReviewController extends Controller
             ];
         }
 
+        $perPage = min((int) $request->input('per_page', 15), 100);
+        $paginated = $query->paginate($perPage);
+
         return response()->json([
-            'average_rating' => $total > 0 ? round($reviews->avg('rating'), 1) : 0,
+            'average_rating' => $total > 0 ? round($allReviews->avg('rating'), 1) : 0,
             'total_reviews'  => $total,
             'distribution'   => $distribution,
-            'reviews'        => $reviews->map(fn ($r) => [
-                'id'                             => $r->id,
-                'customer_name'                  => $r->customer->full_name,
-                // FIX: was missing entirely — this is why only the "D" fallback
-                // avatar ever showed, regardless of what the frontend was reading.
-                'customer_profile_picture_url'   => $r->customer->profile_picture_url,
-                'rating'                         => $r->rating,
-                'comment'                        => $r->comment,
-                'order_id'                       => $r->order_id,
-                'date'                           => $r->created_at->format('d F Y'),
+            'reviews'        => collect($paginated->items())->map(fn ($r) => [
+                'id'            => $r->id,
+                'customer_name' => $r->customer->full_name,
+                'rating'        => $r->rating,
+                'comment'       => $r->comment,
+                'order_id'      => $r->order_id,
+                'date'          => $r->created_at->format('d F Y'),
             ]),
+            'pagination' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page'    => $paginated->lastPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total(),
+            ],
         ]);
     }
 

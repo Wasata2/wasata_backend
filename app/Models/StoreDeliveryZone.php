@@ -7,9 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class StoreDeliveryZone extends Model
 {
-    public const AREAS = ['gaza', 'khan_younis', 'north_gaza', 'middle', 'rafah'];
+    public const REGIONS = ['gaza', 'khan_younis', 'north_gaza', 'middle', 'rafah'];
 
-    protected $fillable = ['store_id', 'area', 'fee'];
+    protected $fillable = ['store_id', 'region', 'fee'];
 
     protected $casts = ['fee' => 'decimal:2'];
 

@@ -12,7 +12,7 @@ class StoreController extends Controller
     // ?city=غزة   ?search=store+name
     public function browse(Request $request)
     {
-        $query = Store::where('status', 'published');
+        $query = Store::where('status', 'published')->with('deliveryZones');
 
         if ($request->filled('city')) {
             $query->where('city', $request->city);
@@ -34,6 +34,7 @@ class StoreController extends Controller
                 'is_accepting_orders'     => $store->is_accepting_orders,
                 'accepts_whatsapp_orders' => $store->accepts_whatsapp_orders,
                 'commission_rate'         => $store->commission_rate,
+                'delivery_zones'          => $store->deliveryZones->map(fn ($z) => ['region' => $z->region, 'fee' => $z->fee]),
                 'delivery_time_range'     => $store->delivery_time_range,
                 'delivery_fee'            => $store->delivery_fee,
                 'pickup_available'        => (bool) $store->pickup_location,
@@ -64,8 +65,8 @@ class StoreController extends Controller
                 'accepts_whatsapp_orders' => $store->accepts_whatsapp_orders,
                 'commission_rate'         => $store->commission_rate,
                 'delivery_time_range'     => $store->delivery_time_range,
-                'delivery_fee'            => $store->delivery_fee, // ⚠️ deprecated, see note below
-                'delivery_zones'          => $store->deliveryZones()->get(['area', 'fee']),
+                'delivery_fee'            => $store->delivery_fee,
+                'delivery_zones'          => $store->deliveryZones->map(fn ($z) => ['region' => $z->region, 'fee' => $z->fee]),
                 'pickup_location'         => $store->pickup_location,
                 'average_rating'          => round($store->reviews()->avg('rating') ?? 0, 1),
                 'total_reviews'           => $store->reviews()->count(),
@@ -123,9 +124,9 @@ class StoreController extends Controller
             $this->fail('You have not created a store yet.', 'STORE_NOT_FOUND', 404);
         }
 
-        return response()->json([
+            return response()->json([
             'store' => array_merge($store->toArray(), [
-            'delivery_zones' => $store->deliveryZones()->get(['area', 'fee']),
+            'delivery_zones' => $store->deliveryZones->map(fn ($z) => ['region' => $z->region, 'fee' => $z->fee]),
             ]),
         ], 200);
     }
@@ -136,8 +137,11 @@ class StoreController extends Controller
         $store = Store::where('user_id', $request->user()->id)->first();
 
         if (! $store) {
-            $this->fail('You have not created a store yet.', 'STORE_NOT_FOUND', 404);
+            return response()->json([
+                'message' => 'You have not created a store yet.',
+            ], 404);
         }
+
         // 'sometimes' = only validate/update fields that were actually sent
         $validated = $request->validate([
             'name'                     => ['sometimes', 'string', 'max:150'],
@@ -151,6 +155,10 @@ class StoreController extends Controller
             'delivery_time_range'      => ['sometimes', 'nullable', 'string', 'max:50'],
             'delivery_fee'             => ['sometimes', 'numeric', 'min:0'],
             'pickup_location'          => ['sometimes', 'nullable', 'string', 'max:150'],
+            // Optional — if sent, replaces this store's entire delivery_zones set.
+            'delivery_zones'           => ['sometimes', 'array'],
+            'delivery_zones.*.region'  => ['required_with:delivery_zones', \Illuminate\Validation\Rule::in(\App\Models\StoreDeliveryZone::REGIONS)],
+            'delivery_zones.*.fee'     => ['required_with:delivery_zones', 'numeric', 'min:0'],
         ]);
 
         if ($request->hasFile('image')) {
@@ -158,12 +166,34 @@ class StoreController extends Controller
             unset($validated['image']);
         }
 
-        $store->update($validated);
+        $zones = $validated['delivery_zones'] ?? null;
+        unset($validated['delivery_zones']);
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($store, $validated, $zones) {
+            $store->update($validated);
+
+            if ($zones !== null) {
+                $store->deliveryZones()->delete();
+                foreach ($zones as $zone) {
+                    $store->deliveryZones()->create($zone);
+                }
+            }
+        });
 
         return response()->json([
             'message' => 'Store updated successfully.',
-            'store'   => $store,
+            'store'   => array_merge($store->fresh()->toArray(), [
+                'delivery_zones' => $store->deliveryZones->map(fn ($z) => ['region' => $z->region, 'fee' => $z->fee]),
+            ]),
         ], 200);
+    }
+
+    // PUT /api/stores/me/delivery-zones — kept as a thin alias for backward
+    // compatibility; delegates to the same logic as update().
+    public function updateDeliveryZones(Request $request)
+    {
+        $request->merge(['delivery_zones' => $request->input('zones', [])]);
+        return $this->update($request);
     }
 
         // PUT /api/stores/me/delivery-zones

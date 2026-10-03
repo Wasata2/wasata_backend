@@ -31,7 +31,7 @@ class OrderController extends Controller
             'store_id'                    => ['required', 'exists:stores,id'],
             'delivery_method'             => ['required', Rule::in(['home_delivery', 'pickup'])],
             'address'                     => ['required_if:delivery_method,home_delivery', 'nullable', 'string', 'max:255'],
-            'delivery_area'               => ['required_if:delivery_method,home_delivery', 'nullable', \Illuminate\Validation\Rule::in(\App\Models\StoreDeliveryZone::AREAS)],
+            'delivery_region'             => ['required_if:delivery_method,home_delivery', 'nullable', \Illuminate\Validation\Rule::in(\App\Models\StoreDeliveryZone::REGIONS)],
             'contact_phone'               => ['nullable', 'string', 'max:20'],
             'customer_note'               => ['nullable', 'string'],
             'estimated_amount'            => ['nullable', 'numeric', 'min:0'],
@@ -59,13 +59,12 @@ class OrderController extends Controller
         // on Order::delivery_fee below: it's a snapshot, locked in now).
         $deliveryFee = null;
         if ($validated['delivery_method'] === 'home_delivery') {
-            $zone = $store->deliveryZones()->where('area', $validated['delivery_area'])->first();
+            $zone = $store->deliveryZones()->where('region', $validated['delivery_region'])->first();
             if (! $zone) {
-                $this->fail('This broker does not deliver to the selected area.', 'DELIVERY_AREA_NOT_SERVED');
+                $this->fail('This broker does not deliver to the selected region.', 'DELIVERY_REGION_NOT_SERVED');
             }
             $deliveryFee = $zone->fee;
         }
-
         // Only look up services for items that actually picked one — a null
         // service_listing_id is valid now and simply skips this check.
         $serviceIds = collect($validated['items'])->pluck('service_listing_id')->filter();
@@ -96,7 +95,7 @@ class OrderController extends Controller
                 'delivery_method'  => $validated['delivery_method'],
                 'address'          => $validated['address'] ?? null,
                 'contact_phone'    => $validated['contact_phone'] ?? null,
-                'delivery_area'    => $validated['delivery_area'] ?? null,
+                'delivery_region'  => $validated['delivery_region'] ?? null,
                 'delivery_fee'     => $deliveryFee,
             ]);
 
